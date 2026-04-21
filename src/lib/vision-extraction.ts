@@ -105,18 +105,58 @@ Use this context to judge is_outside_research. Never let it force a reading that
     .join("\n")
     .trim();
 
-  const json = stripFences(text);
+  const json = extractJsonObject(text);
   try {
     return JSON.parse(json) as VisionExtraction;
   } catch {
+    // Log the full response server-side so we can diagnose without
+    // relying on the truncated client-visible error.
+    console.error("[vision-extraction] JSON parse failed. Full response:\n", text);
     throw new Error(
-      `Failed to parse extraction JSON. Raw response: ${text.slice(0, 500)}`,
+      `Failed to parse extraction JSON. Raw response: ${text.slice(0, 1000)}`,
     );
   }
 }
 
-function stripFences(text: string): string {
+// Returns the first complete top-level JSON object inside `text`, ignoring
+// any preamble, trailing commentary, or markdown fences Opus may add.
+//
+// Strategy:
+//   1. If a ```json … ``` fence is present, use that.
+//   2. Otherwise, find the first "{", then walk forward tracking string
+//      escapes and brace depth until the matching "}".
+function extractJsonObject(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced) return fenced[1].trim();
-  return text;
+
+  const start = text.indexOf("{");
+  if (start === -1) return text;
+
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  // Unbalanced braces — return from the first { onward so the caller's
+  // JSON.parse produces a useful error referencing the real content.
+  return text.slice(start);
 }
