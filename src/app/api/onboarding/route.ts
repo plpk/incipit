@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { nextOnboardingStep, type OnboardingTurn } from "@/lib/onboarding";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -64,6 +65,11 @@ export async function POST(req: Request) {
         .single();
 
       if (error) throw error;
+
+      // Invalidate any cached server renders so that the next navigation
+      // (client router.push to /upload) actually re-reads the profile.
+      revalidatePath("/", "layout");
+
       return NextResponse.json({ mode: "summary", profile: data, summary: result });
     }
 
