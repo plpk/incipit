@@ -9,12 +9,15 @@ export default async function OnboardingPage() {
   if (!env.supabaseUrl || !env.supabaseServiceRoleKey) {
     redirect("/setup");
   }
+  // Query outside the try so a redirect() throw isn't swallowed by the
+  // catch and rerouted to /setup.
+  let existing = null;
   try {
-    const existing = await getCurrentProfile();
-    if (existing) redirect("/upload");
+    existing = await getCurrentProfile();
   } catch {
     redirect("/setup");
   }
+  if (existing) redirect("/upload");
 
   return (
     <main className="min-h-screen bg-parchment-50">
