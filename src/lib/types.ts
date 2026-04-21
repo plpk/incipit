@@ -19,6 +19,16 @@ export type VisionExtraction = {
     confidence: ConfidenceLevel;
     context_snippet?: string;
   }>;
+  // Opus-inferred provenance from visible clues on the scan itself
+  // (archive stamps, catalog numbers, microfilm IDs, ownership marks).
+  // All fields nullable; older extractions without this block should
+  // still deserialize.
+  provenance_hints?: {
+    archive_name?: ExtractedField;
+    archive_location?: ExtractedField;
+    catalog_reference?: ExtractedField;
+    acquisition_method?: ExtractedField;
+  };
   is_outside_research: boolean;
   outside_research_reason?: string;
   summary: string;

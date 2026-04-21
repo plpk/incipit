@@ -25,17 +25,25 @@ Respond ONLY with JSON that matches this schema exactly:
   "entities": [
     { "name": string, "entity_type": "person"|"place"|"organization"|"other", "confidence": "high"|"medium"|"low", "context_snippet": string }
   ],
+  "provenance_hints": {
+    "archive_name":       { "value": string|null, "confidence": "high"|"medium"|"low"|"unable" },
+    "archive_location":   { "value": string|null, "confidence": "high"|"medium"|"low"|"unable" },
+    "catalog_reference":  { "value": string|null, "confidence": "high"|"medium"|"low"|"unable" },
+    "acquisition_method": { "value": string|null, "confidence": "high"|"medium"|"low"|"unable" }
+  },
   "is_outside_research": boolean,
   "outside_research_reason": string,
   "summary": string
 }
 
-Notes:
-- extracted_text.value should contain the full readable text of the image, preserving line breaks where sensible. Spanish is common.
-- entities should list the distinct people, places, and organizations mentioned, not every repetition.
+Notes on fields:
+- extracted_text.value should contain the full readable text of the image, preserving line breaks where sensible. Spanish is common. If the text is very long (e.g. a dense newspaper page), you may abbreviate sections that are clearly irrelevant advertisements or repeated content with "[...]", but keep the main editorial content intact.
+- entities should list the distinct people, places, and organizations mentioned, not every repetition. Cap at the ~25 most significant if the page is dense.
+- provenance_hints: try to infer these from visible clues on the document ONLY — archive stamps, accession numbers, catalog codes, file folder labels, microfilm reel identifiers, library ownership stamps, "Property of…" markings, handwritten archival annotations. If nothing is visible, set value to null with confidence "unable". Never guess based on content alone.
+  - acquisition_method should reflect what the image shows (e.g. "microfilm scan", "physical scan", "photograph of original") if that can be inferred from visual quality, margins, or markings; otherwise null.
 - is_outside_research = true only if the document clearly does NOT fit the historian's stated research context.
-- Keep summary under 60 words.
-- Return JSON only. No prose, no markdown fences.`;
+- Keep summary under 50 words.
+- Return JSON only. No prose, no markdown fences. Do not wrap the JSON in any kind of envelope or preamble.`;
 
 export type MediaInput = {
   mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "application/pdf";
@@ -82,7 +90,10 @@ Use this context to judge is_outside_research. Never let it force a reading that
 
   const response = await client.messages.create({
     model: OPUS_MODEL,
-    max_tokens: 4096,
+    // 4096 was truncating full-newspaper-page extractions mid-JSON. 16384
+    // gives Opus enough runway for a dense Spanish broadsheet with 20+
+    // entities + summary while leaving headroom for the response envelope.
+    max_tokens: 16384,
     system: EXTRACTION_SYSTEM,
     messages: [
       {
@@ -105,13 +116,30 @@ Use this context to judge is_outside_research. Never let it force a reading that
     .join("\n")
     .trim();
 
+  // If Opus hit the token cap the JSON is incomplete — don't try to parse
+  // garbage, give a clear error instead.
+  if (response.stop_reason === "max_tokens") {
+    console.error(
+      "[vision-extraction] Response truncated (stop_reason=max_tokens). Full response:\n",
+      text,
+    );
+    throw new Error(
+      "Extraction response was truncated before completing. The document may be too long for a single pass — try cropping to one page.",
+    );
+  }
+
   const json = extractJsonObject(text);
   try {
     return JSON.parse(json) as VisionExtraction;
   } catch {
     // Log the full response server-side so we can diagnose without
     // relying on the truncated client-visible error.
-    console.error("[vision-extraction] JSON parse failed. Full response:\n", text);
+    console.error(
+      "[vision-extraction] JSON parse failed. stop_reason=",
+      response.stop_reason,
+      "\nFull response:\n",
+      text,
+    );
     throw new Error(
       `Failed to parse extraction JSON. Raw response: ${text.slice(0, 1000)}`,
     );

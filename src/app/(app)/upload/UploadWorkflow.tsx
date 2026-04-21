@@ -8,7 +8,7 @@ import type { ConfidenceLevel, VisionExtraction } from "@/lib/types";
 
 type Stage = "idle" | "uploading" | "extracting" | "review" | "saving" | "done" | "error";
 
-type Provenance = {
+type ProvenanceState = {
   archive_name: string;
   archive_location: string;
   acquisition_method: string;
@@ -16,12 +16,26 @@ type Provenance = {
   catalog_reference: string;
 };
 
-const EMPTY_PROVENANCE: Provenance = {
+type ProvenanceConfidence = {
+  archive_name: ConfidenceLevel | null;
+  archive_location: ConfidenceLevel | null;
+  acquisition_method: ConfidenceLevel | null;
+  catalog_reference: ConfidenceLevel | null;
+};
+
+const EMPTY_PROVENANCE: ProvenanceState = {
   archive_name: "",
   archive_location: "",
   acquisition_method: "",
   discovery_date: "",
   catalog_reference: "",
+};
+
+const EMPTY_PROVENANCE_CONF: ProvenanceConfidence = {
+  archive_name: null,
+  archive_location: null,
+  acquisition_method: null,
+  catalog_reference: null,
 };
 
 type EditableFields = {
@@ -53,7 +67,13 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
   const [aiOriginals, setAiOriginals] = useState<Record<string, string | null>>({});
 
-  const [provenance, setProvenance] = useState<Provenance>(EMPTY_PROVENANCE);
+  const [provenance, setProvenance] = useState<ProvenanceState>(EMPTY_PROVENANCE);
+  const [provenanceConf, setProvenanceConf] = useState<ProvenanceConfidence>(
+    EMPTY_PROVENANCE_CONF,
+  );
+  // When the historian checks "apply to the next uploads too", we carry the
+  // hand-entered provenance forward to the next upload but discard AI-inferred
+  // confidence (the next doc may have different visible stamps).
   const [batchMode, setBatchMode] = useState(false);
   const [researchNote, setResearchNote] = useState("");
   const [noteIsStanding, setNoteIsStanding] = useState(true);
@@ -63,62 +83,87 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
   const router = useRouter();
 
-  const onDrop = useCallback(async (accepted: File[]) => {
-    if (!accepted.length) return;
-    const picked = accepted[0];
-    setError(null);
-    setStage("uploading");
-    setFile(picked);
+  const onDrop = useCallback(
+    async (accepted: File[]) => {
+      if (!accepted.length) return;
+      const picked = accepted[0];
+      setError(null);
+      setStage("uploading");
+      setFile(picked);
 
-    if (picked.type.startsWith("image/")) {
-      setPreview(URL.createObjectURL(picked));
-    } else {
-      setPreview(null);
-    }
-
-    try {
-      const arrayBuffer = await picked.arrayBuffer();
-      const base64 = bufferToBase64(arrayBuffer);
-      setFileBase64(base64);
-
-      setStage("extracting");
-      const form = new FormData();
-      form.append("file", picked);
-      const res = await fetch("/api/extract", { method: "POST", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Extraction failed");
-
-      const ext: VisionExtraction = data.extraction;
-      setExtraction(ext);
-      setFields({
-        publication_name: ext.publication_name,
-        publication_date: ext.publication_date,
-        title_subject: ext.title_subject,
-        author: ext.author,
-        language: ext.language,
-        extracted_text: ext.extracted_text,
-      });
-      setAiOriginals({
-        publication_name: ext.publication_name.value,
-        publication_date: ext.publication_date.value,
-        title_subject: ext.title_subject.value,
-        author: ext.author.value,
-        language: ext.language.value,
-        extracted_text: ext.extracted_text.value,
-      });
-      setEditedFields(new Set());
-
-      if (ext.is_outside_research) {
-        setSaveToSideCollection(true);
-        setSideCollectionName(ext.outside_research_reason?.slice(0, 60) ?? "");
+      if (picked.type.startsWith("image/")) {
+        setPreview(URL.createObjectURL(picked));
+      } else {
+        setPreview(null);
       }
 
-      setStage("review");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
-      setStage("error");
-    }
-  }, []);
+      try {
+        const arrayBuffer = await picked.arrayBuffer();
+        const base64 = bufferToBase64(arrayBuffer);
+        setFileBase64(base64);
+
+        setStage("extracting");
+        const form = new FormData();
+        form.append("file", picked);
+        const res = await fetch("/api/extract", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Extraction failed");
+
+        const ext: VisionExtraction = data.extraction;
+        setExtraction(ext);
+        setFields({
+          publication_name: ext.publication_name,
+          publication_date: ext.publication_date,
+          title_subject: ext.title_subject,
+          author: ext.author,
+          language: ext.language,
+          extracted_text: ext.extracted_text,
+        });
+        setAiOriginals({
+          publication_name: ext.publication_name.value,
+          publication_date: ext.publication_date.value,
+          title_subject: ext.title_subject.value,
+          author: ext.author.value,
+          language: ext.language.value,
+          extracted_text: ext.extracted_text.value,
+        });
+        setEditedFields(new Set());
+
+        // Merge AI-inferred provenance hints into whatever the historian
+        // carried over from the previous upload (batch mode). Only fill an
+        // empty field; never overwrite something the historian already typed.
+        const hints = ext.provenance_hints ?? {};
+        setProvenance((prev) => ({
+          archive_name:
+            prev.archive_name || hints.archive_name?.value || "",
+          archive_location:
+            prev.archive_location || hints.archive_location?.value || "",
+          acquisition_method:
+            prev.acquisition_method || hints.acquisition_method?.value || "",
+          discovery_date: prev.discovery_date,
+          catalog_reference:
+            prev.catalog_reference || hints.catalog_reference?.value || "",
+        }));
+        setProvenanceConf({
+          archive_name: hints.archive_name?.confidence ?? null,
+          archive_location: hints.archive_location?.confidence ?? null,
+          acquisition_method: hints.acquisition_method?.confidence ?? null,
+          catalog_reference: hints.catalog_reference?.confidence ?? null,
+        });
+
+        if (ext.is_outside_research) {
+          setSaveToSideCollection(true);
+          setSideCollectionName(ext.outside_research_reason?.slice(0, 60) ?? "");
+        }
+
+        setStage("review");
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Upload failed");
+        setStage("error");
+      }
+    },
+    [],
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -153,6 +198,16 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     });
   }
 
+  function updateProvenance<K extends keyof ProvenanceState>(key: K, value: string) {
+    setProvenance((prev) => ({ ...prev, [key]: value }));
+    // Once the historian edits an AI-suggested value, the chip turns from
+    // "AI suggested" into plain text — they own it now.
+    if (key !== "discovery_date") {
+      const confKey = key as keyof ProvenanceConfidence;
+      setProvenanceConf((prev) => ({ ...prev, [confKey]: null }));
+    }
+  }
+
   function resetForNext(keepProvenance: boolean) {
     setFile(null);
     setFileBase64(null);
@@ -165,6 +220,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     setSaveToSideCollection(false);
     setSideCollectionName("");
     if (!keepProvenance) setProvenance(EMPTY_PROVENANCE);
+    setProvenanceConf(EMPTY_PROVENANCE_CONF);
     setStage("idle");
     setSavedDocId(null);
   }
@@ -208,28 +264,24 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   if (stage === "idle") {
     return (
-      <div className="space-y-6">
-        <ProvenanceBlock
-          provenance={provenance}
-          onChange={setProvenance}
-          batchMode={batchMode}
-          onBatchChange={setBatchMode}
-        />
-        <div
-          {...getRootProps()}
-          className={`card flex cursor-pointer flex-col items-center justify-center gap-3 border-2 border-dashed p-12 text-center transition ${
-            isDragActive ? "border-accent-400 bg-accent-50" : "border-parchment-300"
-          }`}
-        >
-          <input {...getInputProps()} />
-          <p className="font-serif text-lg">
-            {isDragActive ? "Drop the file here…" : "Drop a scan or click to pick a file"}
-          </p>
-          <p className="text-sm text-ink-500">
-            PDF or image. We&apos;ll read the picture directly — OCR text layers are
-            ignored.
-          </p>
-        </div>
+      <div
+        {...getRootProps()}
+        className={`card flex cursor-pointer flex-col items-center justify-center gap-3 border-2 border-dashed p-16 text-center transition ${
+          isDragActive ? "border-accent-400 bg-accent-50" : "border-parchment-300"
+        }`}
+      >
+        <input {...getInputProps()} />
+        <p className="font-serif text-xl">
+          {isDragActive ? "Drop the file here…" : "Drop a scan or click to pick a file"}
+        </p>
+        <p className="text-sm text-ink-500">
+          PDF or image. We&apos;ll read the picture directly — OCR text layers are
+          ignored.
+        </p>
+        <p className="mt-2 text-xs text-ink-400">
+          You&apos;ll review everything Incipit finds — including any archive
+          markings — before anything is saved.
+        </p>
       </div>
     );
   }
@@ -242,7 +294,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           {stage === "uploading" ? "Reading your file…" : "Opus 4.7 is reading the image…"}
         </p>
         <p className="text-sm text-ink-500">
-          This can take 20–40 seconds for a dense page. Keep this window open.
+          This can take 20–60 seconds for a dense page. Keep this window open.
         </p>
       </div>
     );
@@ -297,7 +349,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     );
   }
 
-  // review stage
+  // review stage — extraction + provenance together, nothing required
   return (
     <div className="space-y-6">
       {extraction?.is_outside_research && (
@@ -337,6 +389,16 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         </div>
 
         <div className="space-y-5">
+          <section>
+            <h2 className="font-serif text-lg font-semibold text-ink-900">
+              Extracted metadata
+            </h2>
+            <p className="text-xs text-ink-500">
+              Review what Opus 4.7 read from the image. Edit anything that&apos;s
+              wrong — your edits become the verified version.
+            </p>
+          </section>
+
           {fields &&
             (Object.keys(FIELD_LABELS) as Array<keyof EditableFields>).map((key) => (
               <FieldEditor
@@ -367,6 +429,14 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
             </div>
           )}
 
+          <ProvenanceBlock
+            provenance={provenance}
+            confidence={provenanceConf}
+            onChange={updateProvenance}
+            batchMode={batchMode}
+            onBatchChange={setBatchMode}
+          />
+
           <div className="card p-6">
             <p className="label">Research note</p>
             <p className="mt-1 text-xs text-ink-500">
@@ -388,13 +458,6 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
               Use this as a standing query against future uploads
             </label>
           </div>
-
-          <ProvenanceBlock
-            provenance={provenance}
-            onChange={setProvenance}
-            batchMode={batchMode}
-            onBatchChange={setBatchMode}
-          />
 
           {saveToSideCollection && (
             <div className="card p-4">
@@ -496,88 +559,130 @@ function FieldEditor({
 
 function ProvenanceBlock({
   provenance,
+  confidence,
   onChange,
   batchMode,
   onBatchChange,
 }: {
-  provenance: Provenance;
-  onChange: (p: Provenance) => void;
+  provenance: ProvenanceState;
+  confidence: ProvenanceConfidence;
+  onChange: <K extends keyof ProvenanceState>(key: K, value: string) => void;
   batchMode: boolean;
   onBatchChange: (v: boolean) => void;
 }) {
-  function set<K extends keyof Provenance>(key: K, value: string) {
-    onChange({ ...provenance, [key]: value });
-  }
-
+  const anyAiInferred = Object.values(confidence).some(
+    (c) => c && c !== "unable",
+  );
   return (
-    <details
-      open
-      className="card p-6 open:pb-6"
-    >
-      <summary className="flex cursor-pointer items-center justify-between">
+    <section className="card p-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-serif text-lg font-medium">Provenance</p>
-          <p className="text-xs text-ink-500">
-            Where you got this. Click through when sources change.
+          <h2 className="font-serif text-lg font-semibold text-ink-900">
+            Provenance{" "}
+            <span className="text-xs font-normal text-ink-400">(optional)</span>
+          </h2>
+          <p className="mt-1 text-xs text-ink-500">
+            Where you got this. Opus pre-fills anything it can read on the scan
+            itself — archive stamps, catalog numbers, microfilm IDs. Everything
+            is optional; skip or edit freely.
           </p>
         </div>
-        <label className="flex items-center gap-2 text-xs text-ink-500">
+        <label className="flex shrink-0 items-center gap-2 text-xs text-ink-500">
           <input
             type="checkbox"
             checked={batchMode}
             onChange={(e) => onBatchChange(e.target.checked)}
           />
-          Apply to the next uploads too
+          Reuse for next uploads
         </label>
-      </summary>
+      </div>
+
+      {anyAiInferred && (
+        <p className="mt-3 text-xs text-accent-700">
+          Fields marked <span className="font-medium">AI suggested</span> were
+          read from visible marks on the scan. Edit or clear them as needed.
+        </p>
+      )}
+
       <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label className="label">Archive name</label>
-          <input
-            className="input-field mt-2"
-            value={provenance.archive_name}
-            onChange={(e) => set("archive_name", e.target.value)}
-            placeholder="e.g. United Nations Archives"
-          />
-        </div>
-        <div>
-          <label className="label">Location</label>
-          <input
-            className="input-field mt-2"
-            value={provenance.archive_location}
-            onChange={(e) => set("archive_location", e.target.value)}
-            placeholder="e.g. New York, USA"
-          />
-        </div>
-        <div>
-          <label className="label">How obtained</label>
-          <input
-            className="input-field mt-2"
-            value={provenance.acquisition_method}
-            onChange={(e) => set("acquisition_method", e.target.value)}
-            placeholder="physical scan, photograph, digital download…"
-          />
-        </div>
+        <ProvenanceField
+          label="Archive name"
+          placeholder="e.g. United Nations Archives"
+          value={provenance.archive_name}
+          confidence={confidence.archive_name}
+          onChange={(v) => onChange("archive_name", v)}
+        />
+        <ProvenanceField
+          label="Location"
+          placeholder="e.g. New York, USA"
+          value={provenance.archive_location}
+          confidence={confidence.archive_location}
+          onChange={(v) => onChange("archive_location", v)}
+        />
+        <ProvenanceField
+          label="How obtained"
+          placeholder="physical scan, photograph, microfilm…"
+          value={provenance.acquisition_method}
+          confidence={confidence.acquisition_method}
+          onChange={(v) => onChange("acquisition_method", v)}
+        />
         <div>
           <label className="label">Date found</label>
           <input
             type="date"
             className="input-field mt-2"
             value={provenance.discovery_date}
-            onChange={(e) => set("discovery_date", e.target.value)}
+            onChange={(e) => onChange("discovery_date", e.target.value)}
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="label">Catalog reference</label>
-          <input
-            className="input-field mt-2"
-            value={provenance.catalog_reference}
-            onChange={(e) => set("catalog_reference", e.target.value)}
+          <ProvenanceField
+            label="Catalog reference"
             placeholder="e.g. S-1301-0000-2317"
+            value={provenance.catalog_reference}
+            confidence={confidence.catalog_reference}
+            onChange={(v) => onChange("catalog_reference", v)}
           />
         </div>
       </div>
-    </details>
+    </section>
+  );
+}
+
+function ProvenanceField({
+  label,
+  value,
+  placeholder,
+  confidence,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  confidence: ConfidenceLevel | null;
+  onChange: (v: string) => void;
+}) {
+  const aiSuggested = !!value && confidence && confidence !== "unable";
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <label className="label">{label}</label>
+        {aiSuggested && (
+          <span
+            className="chip border border-accent-200 bg-accent-50 text-accent-700"
+            title="Opus 4.7 read this from the scan"
+          >
+            AI suggested · {confidence}
+          </span>
+        )}
+      </div>
+      <input
+        className="input-field mt-2"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
   );
 }
 
