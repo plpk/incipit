@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useRouter } from "next/navigation";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { entityClass, type EntityKind } from "@/lib/design";
 import type { ConfidenceLevel, VisionExtraction } from "@/lib/types";
 
 type Stage = "idle" | "uploading" | "extracting" | "review" | "saving" | "done" | "error";
@@ -71,9 +72,6 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [provenanceConf, setProvenanceConf] = useState<ProvenanceConfidence>(
     EMPTY_PROVENANCE_CONF,
   );
-  // When the historian checks "apply to the next uploads too", we carry the
-  // hand-entered provenance forward to the next upload but discard AI-inferred
-  // confidence (the next doc may have different visible stamps).
   const [batchMode, setBatchMode] = useState(false);
   const [researchNote, setResearchNote] = useState("");
   const [noteIsStanding, setNoteIsStanding] = useState(true);
@@ -129,9 +127,6 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         });
         setEditedFields(new Set());
 
-        // Merge AI-inferred provenance hints into whatever the historian
-        // carried over from the previous upload (batch mode). Only fill an
-        // empty field; never overwrite something the historian already typed.
         const hints = ext.provenance_hints ?? {};
         setProvenance((prev) => ({
           archive_name:
@@ -200,8 +195,6 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   function updateProvenance<K extends keyof ProvenanceState>(key: K, value: string) {
     setProvenance((prev) => ({ ...prev, [key]: value }));
-    // Once the historian edits an AI-suggested value, the chip turns from
-    // "AI suggested" into plain text — they own it now.
     if (key !== "discovery_date") {
       const confKey = key as keyof ProvenanceConfidence;
       setProvenanceConf((prev) => ({ ...prev, [confKey]: null }));
@@ -266,21 +259,42 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     return (
       <div
         {...getRootProps()}
-        className={`card flex cursor-pointer flex-col items-center justify-center gap-3 border-2 border-dashed p-16 text-center transition ${
-          isDragActive ? "border-accent-400 bg-accent-50" : "border-parchment-300"
-        }`}
+        className="card flex cursor-pointer flex-col items-center justify-center gap-3 text-center transition animate-fade-up"
+        style={{
+          padding: "72px 32px",
+          border: `2px dashed ${isDragActive ? "#0d9488" : "rgba(0,0,0,0.08)"}`,
+          background: isDragActive
+            ? "linear-gradient(135deg, rgba(13,148,136,0.04), rgba(6,182,212,0.03))"
+            : "#ffffff",
+        }}
       >
         <input {...getInputProps()} />
-        <p className="font-serif text-xl">
+        <span
+          className="mb-2 inline-flex items-center justify-center text-white"
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 16,
+            background: "linear-gradient(135deg, #0d9488, #06b6d4)",
+            boxShadow: "0 4px 16px rgba(13,148,136,0.25)",
+          }}
+          aria-hidden
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 16V4m0 0 4 4m-4-4-4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+          </svg>
+        </span>
+        <p
+          className="font-display font-bold text-ink-900"
+          style={{ fontSize: 20, letterSpacing: "-0.02em" }}
+        >
           {isDragActive ? "Drop the file here…" : "Drop a scan or click to pick a file"}
         </p>
-        <p className="text-sm text-ink-500">
-          PDF or image. We&apos;ll read the picture directly — OCR text layers are
-          ignored.
+        <p className="text-[14px] text-ink-500">
+          PDF or image. We&apos;ll read the picture directly — OCR text layers are ignored.
         </p>
-        <p className="mt-2 text-xs text-ink-400">
-          You&apos;ll review everything Incipit finds — including any archive
-          markings — before anything is saved.
+        <p className="mt-2 text-[12px] text-ink-400">
+          You&apos;ll review everything Incipit finds — including any archive markings — before anything is saved.
         </p>
       </div>
     );
@@ -288,12 +302,15 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   if (stage === "uploading" || stage === "extracting") {
     return (
-      <div className="card flex flex-col items-center gap-4 p-12 text-center">
+      <div className="card flex flex-col items-center gap-5 text-center animate-fade-up" style={{ padding: "64px 32px" }}>
         <Spinner />
-        <p className="font-serif text-lg">
+        <p
+          className="font-display font-bold text-ink-900"
+          style={{ fontSize: 18, letterSpacing: "-0.02em" }}
+        >
           {stage === "uploading" ? "Reading your file…" : "Opus 4.7 is reading the image…"}
         </p>
-        <p className="text-sm text-ink-500">
+        <p className="text-[14px] text-ink-500">
           This can take 20–60 seconds for a dense page. Keep this window open.
         </p>
       </div>
@@ -302,19 +319,18 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   if (stage === "done") {
     return (
-      <div className="card flex flex-col items-start gap-4 p-8">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-widest text-emerald-700">
-            Saved
-          </p>
-          <h2 className="mt-2 font-serif text-2xl font-semibold">
-            Document added to your archive.
-          </h2>
-          <p className="mt-1 text-sm text-ink-500">
-            All fields you touched are marked as verified (T1).
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
+      <div className="card animate-fade-up" style={{ padding: "32px" }}>
+        <span className="pill-verified">✓ Saved</span>
+        <h2
+          className="mt-4 font-display font-extrabold text-ink-900"
+          style={{ fontSize: 24, letterSpacing: "-0.03em" }}
+        >
+          Document added to your archive.
+        </h2>
+        <p className="mt-2 text-[14px] text-ink-500">
+          All fields you touched are marked as verified (T1).
+        </p>
+        <div className="mt-6 flex flex-wrap gap-3">
           <button className="btn-primary" onClick={() => resetForNext(batchMode)}>
             Upload another
           </button>
@@ -339,9 +355,14 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   if (stage === "error") {
     return (
-      <div className="card p-8">
-        <p className="text-sm font-medium text-accent-700">Something went wrong</p>
-        <p className="mt-2 text-sm text-ink-700">{error}</p>
+      <div className="card animate-fade-up" style={{ padding: "28px 32px" }}>
+        <span
+          className="pill-flagged"
+          style={{ marginBottom: 12, display: "inline-flex" }}
+        >
+          Something went wrong
+        </span>
+        <p className="mt-3 text-[14px] text-ink-700">{error}</p>
         <button className="btn-secondary mt-6" onClick={() => resetForNext(batchMode)}>
           Start over
         </button>
@@ -351,11 +372,23 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   // review stage — extraction + provenance together, nothing required
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6 animate-fade-up">
       {extraction?.is_outside_research && (
-        <div className="card border border-accent-200 bg-accent-50 p-4 text-sm text-accent-700">
-          <p className="font-medium">This may not fit your current research.</p>
-          <p className="mt-1">
+        <div
+          className="rounded-card-lg"
+          style={{
+            background: "linear-gradient(135deg, rgba(217,119,6,0.06), rgba(217,119,6,0.03))",
+            border: "1px solid rgba(217,119,6,0.15)",
+            padding: "20px 24px",
+          }}
+        >
+          <p
+            className="font-display font-bold"
+            style={{ fontSize: 15, color: "#92400e", letterSpacing: "-0.02em" }}
+          >
+            This may not fit your current research.
+          </p>
+          <p className="mt-2 text-[14px] text-ink-600" style={{ lineHeight: 1.6 }}>
             {extraction.outside_research_reason ||
               "Incipit thinks this document is outside your stated research context."}{" "}
             You can still save it to a separate collection.
@@ -363,42 +396,88 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-        <div className="space-y-4">
+      {/* Preview + summary, AI-analysis style */}
+      <div
+        className="rounded-card-lg"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(13,148,136,0.04), rgba(6,182,212,0.03))",
+          border: "1px solid rgba(13,148,136,0.08)",
+          padding: "24px 28px",
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          <span
+            className="inline-flex items-center justify-center text-white"
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 7,
+              background: "linear-gradient(135deg, #0d9488, #06b6d4)",
+              fontSize: 12,
+            }}
+            aria-hidden
+          >
+            ✦
+          </span>
+          <span
+            className="font-semibold"
+            style={{ fontSize: 12, color: "#0d9488", letterSpacing: "0.02em" }}
+          >
+            AI Analysis
+          </span>
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-5 md:grid-cols-[160px_1fr]">
           {preview ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={preview}
               alt="Document preview"
-              className="w-full rounded-md border border-parchment-200 object-cover"
+              className="w-full rounded-lg object-cover"
+              style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.1)" }}
             />
           ) : (
-            <div className="card flex h-48 items-center justify-center text-sm text-ink-500">
+            <div
+              className="flex items-center justify-center rounded-lg text-[12px] text-ink-400"
+              style={{
+                aspectRatio: "0.72",
+                background: "linear-gradient(180deg, #f5f0e4, #ece3d0)",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
+              }}
+            >
               {file?.name ?? "Preview unavailable"}
             </div>
           )}
-          <p className="text-xs text-ink-500">{file?.name}</p>
-          {extraction && (
-            <div className="card p-4 text-sm text-ink-700">
-              <p className="text-xs font-medium uppercase tracking-wider text-ink-400">
-                Summary
-              </p>
-              <p className="mt-2">{extraction.summary}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-5">
-          <section>
-            <h2 className="font-serif text-lg font-semibold text-ink-900">
-              Extracted metadata
-            </h2>
-            <p className="text-xs text-ink-500">
-              Review what Opus 4.7 read from the image. Edit anything that&apos;s
-              wrong — your edits become the verified version.
+          <div>
+            <p
+              style={{
+                fontSize: 15.5,
+                lineHeight: 1.8,
+                color: "#3f3f46",
+              }}
+            >
+              {extraction?.summary ?? "Review everything Opus 4.7 read below. Edit anything wrong — your edits become the verified version."}
             </p>
-          </section>
+            {file?.name && (
+              <p className="mt-3 font-mono text-[11px] text-ink-400" style={{ wordBreak: "break-all" }}>
+                {file.name}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
+      {/* Editable extracted fields */}
+      <section>
+        <div className="mb-4 flex items-end justify-between">
+          <div>
+            <span className="section-label">Extracted metadata</span>
+            <p className="mt-1 text-[13px] text-ink-500">
+              Opus 4.7 read this from the image. Edit anything that&apos;s wrong.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
           {fields &&
             (Object.keys(FIELD_LABELS) as Array<keyof EditableFields>).map((key) => (
               <FieldEditor
@@ -407,106 +486,117 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
                 value={fields[key].value ?? ""}
                 confidence={fields[key].confidence}
                 multiline={key === "extracted_text"}
+                mono={key === "publication_date" || key === "extracted_text"}
                 edited={editedFields.has(key)}
                 onChange={(v) => updateField(key, v)}
               />
             ))}
+        </div>
+      </section>
 
-          {extraction && extraction.entities.length > 0 && (
-            <div className="card p-4">
-              <p className="label">Entities detected</p>
-              <ul className="mt-3 flex flex-wrap gap-2">
-                {extraction.entities.map((e, i) => (
-                  <li
-                    key={i}
-                    className="chip border border-parchment-300 bg-parchment-50 text-ink-700"
-                    title={e.context_snippet}
-                  >
-                    {e.name} · {e.entity_type}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <ProvenanceBlock
-            provenance={provenance}
-            confidence={provenanceConf}
-            onChange={updateProvenance}
-            batchMode={batchMode}
-            onBatchChange={setBatchMode}
-          />
-
-          <div className="card p-6">
-            <p className="label">Research note</p>
-            <p className="mt-1 text-xs text-ink-500">
-              Your hunches, context, suspected connections. Notes are checked
-              against every future upload.
-            </p>
-            <textarea
-              className="input-field mt-3 min-h-[80px]"
-              value={researchNote}
-              onChange={(e) => setResearchNote(e.target.value)}
-              placeholder="e.g. I think this connects to something at the UN archives about Tacna-Arica."
-            />
-            <label className="mt-3 flex items-center gap-2 text-xs text-ink-500">
-              <input
-                type="checkbox"
-                checked={noteIsStanding}
-                onChange={(e) => setNoteIsStanding(e.target.checked)}
-              />
-              Use this as a standing query against future uploads
-            </label>
-          </div>
-
-          {saveToSideCollection && (
-            <div className="card p-4">
-              <label className="label">Side collection name</label>
-              <input
-                className="input-field mt-2"
-                value={sideCollectionName}
-                onChange={(e) => setSideCollectionName(e.target.value)}
-                placeholder="e.g. Labour movements (future thread)"
-              />
-              <label className="mt-3 flex items-center gap-2 text-xs text-ink-500">
-                <input
-                  type="checkbox"
-                  checked={!saveToSideCollection}
-                  onChange={() => setSaveToSideCollection(false)}
-                />
-                Actually, include this in my current research
-              </label>
-            </div>
-          )}
-
-          {!saveToSideCollection && extraction?.is_outside_research && (
-            <button
-              className="btn-ghost"
-              onClick={() => setSaveToSideCollection(true)}
-            >
-              Move this to a side collection instead
-            </button>
-          )}
-
-          {error && <p className="text-sm text-accent-700">{error}</p>}
-
-          <div className="flex items-center justify-end gap-3 border-t border-parchment-200 pt-6">
-            <button
-              className="btn-secondary"
-              onClick={() => resetForNext(batchMode)}
-              disabled={stage === "saving"}
-            >
-              Discard
-            </button>
-            <button
-              className="btn-primary"
-              onClick={handleSave}
-              disabled={!canSave || stage === "saving"}
-            >
-              {stage === "saving" ? "Saving…" : "Confirm and save"}
-            </button>
+      {extraction && extraction.entities.length > 0 && (
+        <div className="card" style={{ padding: "20px 24px" }}>
+          <span className="section-label">Entities detected</span>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {extraction.entities.map((e, i) => {
+              const kind = (e.entity_type as EntityKind) ?? "other";
+              return (
+                <span
+                  key={i}
+                  className={entityClass(kind)}
+                  title={e.context_snippet}
+                >
+                  {e.name}
+                </span>
+              );
+            })}
           </div>
         </div>
+      )}
+
+      <ProvenanceBlock
+        provenance={provenance}
+        confidence={provenanceConf}
+        onChange={updateProvenance}
+        batchMode={batchMode}
+        onBatchChange={setBatchMode}
+      />
+
+      <div className="card" style={{ padding: "20px 24px" }}>
+        <span className="section-label">Research note</span>
+        <p className="mt-1 text-[12px] text-ink-500">
+          Your hunches, context, suspected connections. Notes are checked against every future upload.
+        </p>
+        <textarea
+          className="input-field mt-3"
+          style={{ minHeight: 80 }}
+          value={researchNote}
+          onChange={(e) => setResearchNote(e.target.value)}
+          placeholder="e.g. I think this connects to something at the UN archives about Tacna-Arica."
+        />
+        <label className="mt-3 flex items-center gap-2 text-[12px] text-ink-500">
+          <input
+            type="checkbox"
+            checked={noteIsStanding}
+            onChange={(e) => setNoteIsStanding(e.target.checked)}
+          />
+          Use this as a standing query against future uploads
+        </label>
+      </div>
+
+      {saveToSideCollection && (
+        <div className="card" style={{ padding: "20px 24px" }}>
+          <span className="section-label">Side collection name</span>
+          <input
+            className="input-field mt-3"
+            value={sideCollectionName}
+            onChange={(e) => setSideCollectionName(e.target.value)}
+            placeholder="e.g. Labour movements (future thread)"
+          />
+          <label className="mt-3 flex items-center gap-2 text-[12px] text-ink-500">
+            <input
+              type="checkbox"
+              checked={!saveToSideCollection}
+              onChange={() => setSaveToSideCollection(false)}
+            />
+            Actually, include this in my current research
+          </label>
+        </div>
+      )}
+
+      {!saveToSideCollection && extraction?.is_outside_research && (
+        <button
+          className="btn-ghost"
+          onClick={() => setSaveToSideCollection(true)}
+        >
+          Move this to a side collection instead
+        </button>
+      )}
+
+      {error && (
+        <p className="text-[13px]" style={{ color: "#dc2626" }}>
+          {error}
+        </p>
+      )}
+
+      <div
+        className="flex items-center justify-end gap-3 pt-6"
+        style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}
+      >
+        <button
+          className="btn-secondary"
+          onClick={() => resetForNext(batchMode)}
+          disabled={stage === "saving"}
+        >
+          Discard
+        </button>
+        <button
+          className="btn-primary"
+          onClick={handleSave}
+          disabled={!canSave || stage === "saving"}
+        >
+          {stage === "saving" ? "Saving…" : "Confirm and save"}
+        </button>
       </div>
     </div>
   );
@@ -517,6 +607,7 @@ function FieldEditor({
   value,
   confidence,
   multiline,
+  mono,
   edited,
   onChange,
 }: {
@@ -524,16 +615,25 @@ function FieldEditor({
   value: string;
   confidence: ConfidenceLevel;
   multiline?: boolean;
+  mono?: boolean;
   edited: boolean;
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="card p-4">
+    <div className="card" style={{ padding: "16px 20px" }}>
       <div className="flex items-center justify-between gap-3">
-        <label className="label">{label}</label>
+        <label
+          className="font-medium text-ink-700"
+          style={{ fontSize: 13 }}
+        >
+          {label}
+        </label>
         <div className="flex items-center gap-2">
           {edited && (
-            <span className="chip border border-emerald-200 bg-emerald-50 text-emerald-800">
+            <span
+              className="confidence-badge"
+              style={{ color: "#059669", background: "#ecfdf5" }}
+            >
               Edited
             </span>
           )}
@@ -542,13 +642,15 @@ function FieldEditor({
       </div>
       {multiline ? (
         <textarea
-          className="input-field mt-3 min-h-[180px] font-mono text-xs"
+          className={`input-field mt-3 ${mono ? "font-mono" : ""}`}
+          style={{ minHeight: 180, fontSize: mono ? 12.5 : 14 }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
       ) : (
         <input
-          className="input-field mt-3"
+          className={`input-field mt-3 ${mono ? "font-mono" : ""}`}
+          style={{ fontSize: mono ? 13 : 14 }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -574,20 +676,15 @@ function ProvenanceBlock({
     (c) => c && c !== "unable",
   );
   return (
-    <section className="card p-6">
+    <section className="card" style={{ padding: "24px 28px" }}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-ink-900">
-            Provenance{" "}
-            <span className="text-xs font-normal text-ink-400">(optional)</span>
-          </h2>
-          <p className="mt-1 text-xs text-ink-500">
-            Where you got this. Opus pre-fills anything it can read on the scan
-            itself — archive stamps, catalog numbers, microfilm IDs. Everything
-            is optional; skip or edit freely.
+          <span className="section-label">Provenance (optional)</span>
+          <p className="mt-2 text-[12px] text-ink-500" style={{ lineHeight: 1.55 }}>
+            Where you got this. Opus pre-fills anything it can read on the scan itself — archive stamps, catalog numbers, microfilm IDs. Everything is optional; skip or edit freely.
           </p>
         </div>
-        <label className="flex shrink-0 items-center gap-2 text-xs text-ink-500">
+        <label className="flex shrink-0 items-center gap-2 text-[12px] text-ink-500">
           <input
             type="checkbox"
             checked={batchMode}
@@ -598,9 +695,11 @@ function ProvenanceBlock({
       </div>
 
       {anyAiInferred && (
-        <p className="mt-3 text-xs text-accent-700">
-          Fields marked <span className="font-medium">AI suggested</span> were
-          read from visible marks on the scan. Edit or clear them as needed.
+        <p
+          className="mt-3 text-[12px]"
+          style={{ color: "#0d9488" }}
+        >
+          Fields marked <span className="font-semibold">AI suggested</span> were read from visible marks on the scan. Edit or clear them as needed.
         </p>
       )}
 
@@ -627,10 +726,11 @@ function ProvenanceBlock({
           onChange={(v) => onChange("acquisition_method", v)}
         />
         <div>
-          <label className="label">Date found</label>
+          <p className="field-label">Date found</p>
           <input
             type="date"
-            className="input-field mt-2"
+            className="input-field mt-2 font-mono"
+            style={{ fontSize: 13 }}
             value={provenance.discovery_date}
             onChange={(e) => onChange("discovery_date", e.target.value)}
           />
@@ -642,6 +742,7 @@ function ProvenanceBlock({
             value={provenance.catalog_reference}
             confidence={confidence.catalog_reference}
             onChange={(v) => onChange("catalog_reference", v)}
+            mono
           />
         </div>
       </div>
@@ -654,30 +755,38 @@ function ProvenanceField({
   value,
   placeholder,
   confidence,
+  mono,
   onChange,
 }: {
   label: string;
   value: string;
   placeholder?: string;
   confidence: ConfidenceLevel | null;
+  mono?: boolean;
   onChange: (v: string) => void;
 }) {
   const aiSuggested = !!value && confidence && confidence !== "unable";
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <label className="label">{label}</label>
+        <p className="field-label">{label}</p>
         {aiSuggested && (
           <span
-            className="chip border border-accent-200 bg-accent-50 text-accent-700"
+            className="confidence-badge"
+            style={{
+              color: "#0d9488",
+              background: "linear-gradient(135deg, rgba(13,148,136,0.08), rgba(6,182,212,0.06))",
+              border: "1px solid rgba(13,148,136,0.15)",
+            }}
             title="Opus 4.7 read this from the scan"
           >
-            AI suggested · {confidence}
+            AI · {confidence}
           </span>
         )}
       </div>
       <input
-        className="input-field mt-2"
+        className={`input-field mt-2 ${mono ? "font-mono" : ""}`}
+        style={{ fontSize: mono ? 13 : 14 }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -689,9 +798,10 @@ function ProvenanceField({
 function Spinner() {
   return (
     <svg
-      className="h-6 w-6 animate-spin text-ink-600"
+      className="h-8 w-8 animate-spin"
       viewBox="0 0 24 24"
       fill="none"
+      style={{ color: "#0d9488" }}
     >
       <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path
