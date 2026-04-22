@@ -59,11 +59,46 @@ const BodySchema = z.object({
     .default({}),
 });
 
+const FIELD_LABELS: Record<string, string> = {
+  "provenance.archive_name": "Archive name",
+  "provenance.archive_location": "Location",
+  "provenance.acquisition_method": "How obtained",
+  "provenance.discovery_date": "Date found",
+  "provenance.catalog_reference": "Catalog reference",
+  "fields.publication_name.value": "Publication name",
+  "fields.publication_date.value": "Date",
+  "fields.title_subject.value": "Title / subject",
+  "fields.author.value": "Author",
+  "fields.language.value": "Language",
+  "fields.extracted_text.value": "Extracted text",
+  "research_note": "Research note",
+  "original_filename": "Original filename",
+  "file_base64": "File data",
+  "file_type": "File type",
+};
+
 export async function POST(req: Request) {
   try {
     assertServerEnv();
     const json = await req.json();
-    const body = BodySchema.parse(json);
+    const parsed = BodySchema.safeParse(json);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => {
+        const path = i.path.join(".");
+        const label = FIELD_LABELS[path] ?? path;
+        return { field: path, label, message: i.message };
+      });
+      const first = issues[0];
+      return NextResponse.json(
+        {
+          error: `${first.label}: ${first.message}`,
+          field: first.field,
+          issues,
+        },
+        { status: 400 },
+      );
+    }
+    const body = parsed.data;
     const supabase = getServerSupabase();
 
     // 1. Upload the file to storage.
@@ -221,8 +256,18 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ document: doc });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const raw = err instanceof Error ? err.message : "Unknown error";
+    // Postgres errors from PostgREST surface as strings like
+    //   'invalid input syntax for type date: "April 2026"'
+    // Pull out the column if we can so the client can highlight the field.
+    let field: string | undefined;
+    const dateMatch = raw.match(/type date: "([^"]*)"/);
+    if (dateMatch) field = "provenance.discovery_date";
+    const message = field
+      ? `${FIELD_LABELS[field] ?? field}: ${raw}`
+      : raw;
+    console.error("[documents.POST] failed", err);
+    return NextResponse.json({ error: message, field }, { status: 500 });
   }
 }
 
