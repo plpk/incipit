@@ -84,8 +84,12 @@ export type DocumentConnection = {
   target_document_id: string;
   target_title: string | null;
   connection_type: string | null;
+  strength: "strong" | "medium" | null;
   description: string | null;
-  matched_by: string | null;
+  linked_entities: string[];
+  matched_note_id: string | null;
+  matched_note_text: string | null;
+  matched_note_source_title: string | null;
 };
 
 export async function getDocumentConnections(
@@ -95,18 +99,23 @@ export async function getDocumentConnections(
   const { data, error } = await supabase
     .from("connections")
     .select(
-      "id, target_document_id, connection_type, description, matched_by, target:target_document_id(id, title_subject, publication_name, original_filename)",
+      "id, source_document_id, target_document_id, connection_type, strength, description, linked_entities, matched_note_id, target:target_document_id(id, title_subject, publication_name, original_filename), source:source_document_id(id, title_subject, publication_name, original_filename), note:matched_note_id(id, note_text, documents:document_id(title_subject, publication_name, original_filename))",
     )
-    .eq("source_document_id", documentId)
-    .limit(20);
+    .or(`source_document_id.eq.${documentId},target_document_id.eq.${documentId}`)
+    .order("created_at", { ascending: false })
+    .limit(40);
   if (error) return [];
-  return (data ?? []).map((row) => {
+  const dedup = new Map<string, DocumentConnection>();
+  for (const row of data ?? []) {
     const r = row as unknown as {
       id: string;
+      source_document_id: string;
       target_document_id: string;
       connection_type?: string | null;
+      strength?: string | null;
       description?: string | null;
-      matched_by?: string | null;
+      linked_entities?: unknown;
+      matched_note_id?: string | null;
       target?:
         | {
             title_subject?: string | null;
@@ -119,20 +128,101 @@ export async function getDocumentConnections(
             original_filename?: string | null;
           }>
         | null;
+      source?:
+        | {
+            title_subject?: string | null;
+            publication_name?: string | null;
+            original_filename?: string | null;
+          }
+        | Array<{
+            title_subject?: string | null;
+            publication_name?: string | null;
+            original_filename?: string | null;
+          }>
+        | null;
+      note?:
+        | {
+            id: string;
+            note_text: string;
+            documents?:
+              | {
+                  title_subject?: string | null;
+                  publication_name?: string | null;
+                  original_filename?: string | null;
+                }
+              | Array<{
+                  title_subject?: string | null;
+                  publication_name?: string | null;
+                  original_filename?: string | null;
+                }>
+              | null;
+          }
+        | Array<{
+            id: string;
+            note_text: string;
+            documents?:
+              | {
+                  title_subject?: string | null;
+                  publication_name?: string | null;
+                  original_filename?: string | null;
+                }
+              | Array<{
+                  title_subject?: string | null;
+                  publication_name?: string | null;
+                  original_filename?: string | null;
+                }>
+              | null;
+          }>
+        | null;
     };
-    const targetRaw = r.target;
+    // Always display the "other" document relative to the one we're viewing.
+    const outboundTarget =
+      r.source_document_id === documentId ? r.target : r.source;
+    const otherId =
+      r.source_document_id === documentId
+        ? r.target_document_id
+        : r.source_document_id;
+    const targetRaw = outboundTarget;
     const target = Array.isArray(targetRaw) ? targetRaw[0] : targetRaw;
-    return {
+    const noteRaw = r.note;
+    const note = Array.isArray(noteRaw) ? noteRaw[0] : noteRaw;
+    const noteDocsRaw = note?.documents;
+    const noteDoc = Array.isArray(noteDocsRaw) ? noteDocsRaw[0] : noteDocsRaw;
+    const linked =
+      Array.isArray(r.linked_entities) &&
+      r.linked_entities.every((v) => typeof v === "string")
+        ? (r.linked_entities as string[])
+        : [];
+    const entry: DocumentConnection = {
       id: r.id,
-      target_document_id: r.target_document_id,
+      target_document_id: otherId,
       target_title:
         target?.title_subject ??
         target?.publication_name ??
         target?.original_filename ??
         null,
       connection_type: r.connection_type ?? null,
+      strength:
+        r.strength === "strong" || r.strength === "medium" ? r.strength : null,
       description: r.description ?? null,
-      matched_by: r.matched_by ?? null,
+      linked_entities: linked,
+      matched_note_id: r.matched_note_id ?? null,
+      matched_note_text: note?.note_text ?? null,
+      matched_note_source_title:
+        noteDoc?.title_subject ??
+        noteDoc?.publication_name ??
+        noteDoc?.original_filename ??
+        null,
     };
-  });
+    // Deduplicate symmetric pairs — viewing from either side shows one card.
+    const key = [
+      documentId,
+      entry.target_document_id,
+      entry.connection_type ?? "",
+    ]
+      .sort()
+      .join("|");
+    if (!dedup.has(key)) dedup.set(key, entry);
+  }
+  return Array.from(dedup.values());
 }

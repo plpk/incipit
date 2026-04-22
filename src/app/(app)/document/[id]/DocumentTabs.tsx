@@ -486,67 +486,106 @@ function ConnectionsTab({ connections }: { connections: DocumentConnection[] }) 
   }
   return (
     <div className="flex flex-col gap-4">
-      {connections.map((c) => {
-        const isNoteMatch = c.matched_by?.startsWith("note:");
-        const strength =
-          c.connection_type === "entity" || c.connection_type === "theme"
-            ? "Strong"
-            : "Medium";
-        return (
-          <div key={c.id} className="card" style={{ padding: "20px 24px" }}>
-            <div className="flex items-start justify-between gap-4">
-              <h3
-                className="font-display font-bold text-ink-900"
-                style={{ fontSize: 16, letterSpacing: "-0.02em" }}
-              >
-                {c.target_title ?? "Related document"}
-              </h3>
-              <span
-                className={
-                  strength === "Strong" ? "pill-verified" : "pill-unconfirmed"
-                }
-                style={{ flexShrink: 0 }}
-              >
-                {strength}
-              </span>
-            </div>
-            {c.description && (
-              <p className="mt-2 text-[14px] text-ink-600" style={{ lineHeight: 1.65 }}>
-                {c.description}
-              </p>
-            )}
-            {c.connection_type && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="entity-chip entity-other">
-                  {c.connection_type}
-                </span>
-                {c.matched_by && !isNoteMatch && (
-                  <span className="entity-chip entity-other font-mono" style={{ fontSize: 11 }}>
-                    {c.matched_by}
-                  </span>
-                )}
-              </div>
-            )}
-            {isNoteMatch && (
-              <div
-                className="mt-3 inline-flex items-center gap-2"
-                style={{
-                  background: "linear-gradient(135deg, rgba(13,148,136,0.08), rgba(6,182,212,0.06))",
-                  border: "1px solid rgba(13,148,136,0.15)",
-                  color: "#0d9488",
-                  borderRadius: 20,
-                  padding: "5px 12px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                }}
-              >
-                <span>✦</span>
-                <span>Matched your research note</span>
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {connections.map((c) => (
+        <ConnectionCard key={c.id} c={c} />
+      ))}
     </div>
   );
+}
+
+function ConnectionCard({ c }: { c: DocumentConnection }) {
+  const isNoteMatch = !!c.matched_note_id;
+  const typeLabel = connectionTypeLabel(c.connection_type);
+  const strengthLabel = c.strength
+    ? c.strength.charAt(0).toUpperCase() + c.strength.slice(1)
+    : null;
+  return (
+    <a
+      href={`/document/${c.target_document_id}`}
+      className="card block transition hover:shadow-md"
+      style={{ padding: "20px 24px", textDecoration: "none", color: "inherit" }}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <h3
+          className="font-display font-bold text-ink-900"
+          style={{ fontSize: 16, letterSpacing: "-0.02em" }}
+        >
+          {c.target_title ?? "Related document"}
+        </h3>
+        {strengthLabel && (
+          <span
+            className={
+              c.strength === "strong" ? "pill-verified" : "pill-unconfirmed"
+            }
+            style={{ flexShrink: 0 }}
+          >
+            {strengthLabel}
+          </span>
+        )}
+      </div>
+      {c.description && (
+        <p
+          className="mt-2 text-[14px] text-ink-600"
+          style={{ lineHeight: 1.65 }}
+        >
+          {c.description}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {typeLabel && (
+          <span className="entity-chip entity-other">{typeLabel}</span>
+        )}
+        {c.linked_entities.slice(0, 6).map((name, i) => (
+          <span key={i} className="entity-chip entity-other">
+            {name}
+          </span>
+        ))}
+      </div>
+      {isNoteMatch && (
+        <div
+          className="mt-3 inline-flex items-center gap-2"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(13,148,136,0.08), rgba(6,182,212,0.06))",
+            border: "1px solid rgba(13,148,136,0.15)",
+            color: "#0d9488",
+            borderRadius: 20,
+            padding: "5px 12px",
+            fontSize: 12,
+            fontWeight: 600,
+          }}
+        >
+          <span>✦</span>
+          <span>Matched research note</span>
+        </div>
+      )}
+      {isNoteMatch && c.matched_note_text && (
+        <p
+          className="mt-2 text-[13px]"
+          style={{ color: "#0d9488", fontStyle: "italic", lineHeight: 1.5 }}
+        >
+          &ldquo;{c.matched_note_text}&rdquo;
+          {c.matched_note_source_title && (
+            <span className="ml-1 text-ink-500 not-italic">
+              — from {c.matched_note_source_title}
+            </span>
+          )}
+        </p>
+      )}
+    </a>
+  );
+}
+
+function connectionTypeLabel(type: string | null): string | null {
+  if (!type) return null;
+  switch (type) {
+    case "direct":
+      return "Direct";
+    case "thematic":
+      return "Thematic";
+    case "argumentative":
+      return "Argumentative";
+    default:
+      return type;
+  }
 }

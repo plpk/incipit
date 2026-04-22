@@ -226,6 +226,75 @@ export async function POST(req: Request) {
   }
 }
 
+export async function DELETE() {
+  // Dev/testing convenience: wipe the entire archive — docs, entities,
+  // connections, research notes, and every stored file. Research profile
+  // is NOT touched here; use the profile endpoint for that.
+  try {
+    assertServerEnv();
+    const supabase = getServerSupabase();
+
+    // Page through storage paths so we can remove the blobs. Supabase's
+    // `.in("file_path", ...)` has no batch limit in practice here because
+    // we do the delete by a truthy filter; fetching ids for remove() is fine.
+    const { data: docs, error: listErr } = await supabase
+      .from("documents")
+      .select("file_path");
+    if (listErr) throw listErr;
+
+    const paths = (docs ?? [])
+      .map((d) => d.file_path as string | null)
+      .filter((p): p is string => !!p);
+    if (paths.length > 0) {
+      // supabase-js storage.remove handles batches; chunk defensively.
+      const CHUNK = 100;
+      for (let i = 0; i < paths.length; i += CHUNK) {
+        const slice = paths.slice(i, i + CHUNK);
+        const { error: rmErr } = await supabase.storage
+          .from(env.supabaseBucket)
+          .remove(slice);
+        if (rmErr) {
+          console.error("[documents.deleteAll] storage remove failed", rmErr);
+          // keep going — we still want the DB wipe to succeed
+        }
+      }
+    }
+
+    // Delete documents first — cascades handle document_changelog,
+    // document_entities (the junction), and connections.
+    // Using neq on a sentinel uuid lets us "delete all" via the REST API
+    // without needing a raw SQL truncate.
+    const SENTINEL = "00000000-0000-0000-0000-000000000000";
+    const { error: docErr } = await supabase
+      .from("documents")
+      .delete()
+      .neq("id", SENTINEL);
+    if (docErr) throw docErr;
+
+    // Entities are not cascaded by documents delete — only the junction is.
+    // Wipe them so the archive is truly empty.
+    const { error: entErr } = await supabase
+      .from("entities")
+      .delete()
+      .neq("id", SENTINEL);
+    if (entErr) throw entErr;
+
+    // Research notes link to documents via SET NULL, so they survive a doc
+    // wipe. For a true archive reset we remove them too.
+    const { error: noteErr } = await supabase
+      .from("research_notes")
+      .delete()
+      .neq("id", SENTINEL);
+    if (noteErr) throw noteErr;
+
+    return NextResponse.json({ ok: true, removed_files: paths.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[documents.deleteAll] failed", err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 function extensionFor(mimeType: string, filename: string): string {
   const m = filename.match(/\.([a-z0-9]{1,6})$/i);
   if (m) return `.${m[1].toLowerCase()}`;

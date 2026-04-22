@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listDocuments } from "@/lib/queries";
 import { TrustTierBadge } from "@/components/ConfidenceBadge";
 import { PageShell } from "@/components/PageShell";
+import { DeleteAllButton } from "./DeleteAllButton";
 
 export const dynamic = "force-dynamic";
 
@@ -12,20 +13,28 @@ export default async function ArchivePage() {
 
   return (
     <PageShell>
-      <header>
-        <h1
-          className="font-display font-extrabold text-ink-900"
-          style={{
-            fontSize: 36,
-            letterSpacing: "-0.04em",
-            lineHeight: 1.1,
-          }}
-        >
-          Archive
-        </h1>
-        <p className="mt-3 text-ink-500" style={{ fontSize: 15, lineHeight: 1.6 }}>
-          Every document you&apos;ve ingested, newest first.
-        </p>
+      <header className="flex items-start justify-between gap-6">
+        <div>
+          <h1
+            className="font-display font-extrabold text-ink-900"
+            style={{
+              fontSize: 36,
+              letterSpacing: "-0.04em",
+              lineHeight: 1.1,
+            }}
+          >
+            Archive
+          </h1>
+          <p
+            className="mt-3 text-ink-500"
+            style={{ fontSize: 15, lineHeight: 1.6 }}
+          >
+            Every document you&apos;ve ingested, newest first.
+          </p>
+        </div>
+        <div className="shrink-0 pt-2">
+          <DeleteAllButton count={docs.length} />
+        </div>
       </header>
 
       <DocSection title="Current research" docs={primary} />
