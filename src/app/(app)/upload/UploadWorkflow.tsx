@@ -5,7 +5,13 @@ import { useDropzone } from "react-dropzone";
 import { useRouter } from "next/navigation";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { entityClass, type EntityKind } from "@/lib/design";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { ConfidenceLevel, VisionExtraction } from "@/lib/types";
+
+// Mirrors SUPABASE_STORAGE_BUCKET on the server (default "documents").
+// The bucket name is not a secret, so hardcoding matches what the
+// server resolves to and avoids a round-trip just to learn it.
+const STORAGE_BUCKET = "documents";
 
 type Stage =
   | "idle"
@@ -113,7 +119,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     // If the user reports the bug and this banner is NOT in their console,
     // their browser is serving a stale bundle and they need to hard-refresh.
     console.log(
-      "%c[UploadWorkflow build 2026-04-22-defensive]",
+      "%c[UploadWorkflow build 2026-04-22-direct-upload]",
       "background:#0d9488;color:#fff;padding:2px 6px;border-radius:3px;",
     );
     const onError = (ev: ErrorEvent) => {
@@ -152,17 +158,49 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       }
 
       try {
+        // Step 1: ask the server for a signed upload URL. Tiny JSON request
+        // in both directions — no file bytes touch a Vercel function.
+        const urlRes = await fetch("/api/upload-url", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            filename: picked.name,
+            file_type: picked.type,
+          }),
+        });
+        const urlData = await urlRes.json();
+        if (!urlRes.ok) {
+          throw new Error(urlData.error ?? "Could not mint upload URL");
+        }
+
+        // Step 2: PUT the bytes directly to Supabase storage, bypassing
+        // Vercel's 4.5MB request-body limit entirely. This is the only
+        // place in the app where the file bytes cross the network.
+        const supabase = getBrowserSupabase();
+        const { error: upErr } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .uploadToSignedUrl(urlData.path as string, urlData.token as string, picked, {
+            contentType: picked.type,
+            upsert: false,
+          });
+        if (upErr) throw new Error(`Upload to storage failed: ${upErr.message}`);
+
+        // Step 3: ask the server to extract metadata. It downloads from
+        // storage (server-side, no body limit on that direction) and
+        // calls Opus. The request we send is just a storage reference.
         setStage("extracting");
-        const form = new FormData();
-        form.append("file", picked);
-        const res = await fetch("/api/extract", { method: "POST", body: form });
+        const res = await fetch("/api/extract", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            file_path: urlData.path as string,
+            file_type: picked.type,
+            original_filename: picked.name,
+          }),
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Extraction failed");
 
-        // /api/extract both reads the vision extraction AND uploads the
-        // file to Supabase storage, returning the storage reference.
-        // Save only sends the reference — never the file bytes — keeping
-        // the /api/documents body well under Vercel's 4.5MB limit.
         if (!data.upload) {
           throw new Error("Extract response missing upload reference");
         }
