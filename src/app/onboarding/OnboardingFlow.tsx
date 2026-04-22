@@ -76,25 +76,67 @@ export function OnboardingFlow() {
 
   if (summary) {
     return (
-      <div className="card p-8">
-        <h2 className="font-serif text-2xl font-semibold">Your research profile</h2>
-        <p className="mt-2 text-sm text-ink-500">
-          Incipit will use this context to read and organise every document you
-          upload.
+      <div className="card animate-fade-up" style={{ padding: "32px" }}>
+        <h2
+          className="font-display font-extrabold text-ink-900"
+          style={{ fontSize: 24, letterSpacing: "-0.03em" }}
+        >
+          Your research profile
+        </h2>
+        <p className="mt-2 text-[14px] text-ink-500">
+          Incipit will use this context to read and organise every document you upload.
         </p>
-        <dl className="mt-6 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+        <div className="mt-6 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2">
           <Field label="Topic" value={summary.topic} />
           <Field label="Time period" value={summary.time_period} />
           <Field label="Countries" value={summary.countries.join(", ")} />
           <Field label="Goal" value={summary.goal_type} />
           <Field label="Audience" value={summary.audience} />
-        </dl>
-        <div className="mt-6 rounded-md bg-parchment-100 p-4 text-sm text-ink-700">
-          {summary.ai_summary}
+        </div>
+        <div
+          className="mt-6 rounded-card-lg"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(13,148,136,0.04), rgba(6,182,212,0.03))",
+            border: "1px solid rgba(13,148,136,0.08)",
+            padding: "20px 24px",
+          }}
+        >
+          <div className="flex items-center gap-2.5">
+            <span
+              className="inline-flex items-center justify-center text-white"
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 7,
+                background: "linear-gradient(135deg, #0d9488, #06b6d4)",
+                fontSize: 12,
+              }}
+              aria-hidden
+            >
+              ✦
+            </span>
+            <span
+              className="font-semibold"
+              style={{
+                fontSize: 12,
+                color: "#0d9488",
+                letterSpacing: "0.02em",
+              }}
+            >
+              AI summary
+            </span>
+          </div>
+          <p
+            className="mt-3"
+            style={{ fontSize: 14.5, lineHeight: 1.75, color: "#3f3f46" }}
+          >
+            {summary.ai_summary}
+          </p>
         </div>
         <div className="mt-8 flex gap-3">
           <button
-            className="btn-primary"
+            className="btn-primary-gradient"
             onClick={() => router.push("/upload")}
           >
             Start uploading documents
@@ -106,24 +148,36 @@ export function OnboardingFlow() {
 
   if (!started) {
     return (
-      <form onSubmit={handleStart} className="card p-8">
-        <label className="label" htmlFor="description">
+      <form
+        onSubmit={handleStart}
+        className="card animate-fade-up"
+        style={{ padding: "32px" }}
+      >
+        <label
+          className="font-display font-bold text-ink-900"
+          htmlFor="description"
+          style={{ fontSize: 18, letterSpacing: "-0.02em" }}
+        >
           What are you researching?
         </label>
-        <p className="mt-1 text-sm text-ink-500">
-          A sentence or a paragraph, whichever feels natural. Incipit will ask a
-          couple of short follow-up questions.
+        <p className="mt-2 text-[14px] text-ink-500">
+          A sentence or a paragraph, whichever feels natural. Incipit will ask a couple of short follow-up questions.
         </p>
         <textarea
           id="description"
-          className="input-field mt-3 min-h-[160px]"
+          className="input-field mt-4"
+          style={{ minHeight: 160, fontSize: 14.5, lineHeight: 1.6 }}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="For example: I'm working on a book about the Tacna-Arica dispute in the 1920s, focused on Peruvian newspaper coverage and League of Nations correspondence."
         />
-        {error && <p className="mt-3 text-sm text-accent-700">{error}</p>}
+        {error && (
+          <p className="mt-3 text-[13px]" style={{ color: "#dc2626" }}>
+            {error}
+          </p>
+        )}
         <div className="mt-6 flex justify-end">
-          <button type="submit" className="btn-primary" disabled={loading}>
+          <button type="submit" className="btn-primary-gradient" disabled={loading}>
             {loading ? "Thinking…" : "Continue"}
           </button>
         </div>
@@ -132,48 +186,100 @@ export function OnboardingFlow() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="card p-6">
-        <p className="text-xs font-medium uppercase tracking-wider text-ink-400">You wrote</p>
-        <p className="mt-2 text-sm text-ink-800">{description}</p>
+    <div className="flex flex-col gap-4 animate-fade-up">
+      <div className="card" style={{ padding: "20px 24px" }}>
+        <span className="section-label">You wrote</span>
+        <p
+          className="mt-3 text-ink-900"
+          style={{ fontSize: 14.5, lineHeight: 1.7 }}
+        >
+          {description}
+        </p>
       </div>
 
       {history.map((turn, i) => (
         <div
           key={i}
-          className={
+          className="rounded-card-lg"
+          style={
             turn.role === "assistant"
-              ? "card p-6"
-              : "rounded-md border border-parchment-200 bg-parchment-50 p-4 text-sm text-ink-700"
+              ? {
+                  background:
+                    "linear-gradient(135deg, rgba(13,148,136,0.04), rgba(6,182,212,0.03))",
+                  border: "1px solid rgba(13,148,136,0.08)",
+                  padding: "20px 24px",
+                }
+              : {
+                  background: "#ffffff",
+                  border: "1px solid rgba(0,0,0,0.04)",
+                  padding: "16px 20px",
+                }
           }
         >
           {turn.role === "assistant" ? (
             <>
-              <p className="text-xs font-medium uppercase tracking-wider text-accent-600">
-                Incipit
+              <div className="flex items-center gap-2.5">
+                <span
+                  className="inline-flex items-center justify-center text-white"
+                  style={{
+                    width: 22,
+                    height: 22,
+                    borderRadius: 7,
+                    background: "linear-gradient(135deg, #0d9488, #06b6d4)",
+                    fontSize: 12,
+                  }}
+                  aria-hidden
+                >
+                  ✦
+                </span>
+                <span
+                  className="font-semibold"
+                  style={{
+                    fontSize: 12,
+                    color: "#0d9488",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  Incipit
+                </span>
+              </div>
+              <p
+                className="mt-3"
+                style={{
+                  fontSize: 15,
+                  lineHeight: 1.75,
+                  color: "#3f3f46",
+                }}
+              >
+                {turn.content}
               </p>
-              <p className="mt-2 text-ink-800">{turn.content}</p>
             </>
           ) : (
             <>
-              <p className="text-xs font-medium uppercase tracking-wider text-ink-400">You</p>
-              <p className="mt-1">{turn.content}</p>
+              <span className="field-label">You</span>
+              <p
+                className="mt-2 text-ink-700"
+                style={{ fontSize: 14, lineHeight: 1.6 }}
+              >
+                {turn.content}
+              </p>
             </>
           )}
         </div>
       ))}
 
       {pendingQuestion && (
-        <form onSubmit={handleAnswer} className="card p-6">
+        <form onSubmit={handleAnswer} className="card" style={{ padding: "20px 24px" }}>
           <textarea
-            className="input-field min-h-[100px]"
+            className="input-field"
+            style={{ minHeight: 100, fontSize: 14.5, lineHeight: 1.6 }}
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             placeholder="Your answer…"
             autoFocus
           />
           <div className="mt-4 flex justify-end">
-            <button type="submit" className="btn-primary" disabled={loading || !answer.trim()}>
+            <button type="submit" className="btn-primary-gradient" disabled={loading || !answer.trim()}>
               {loading ? "Thinking…" : "Send"}
             </button>
           </div>
@@ -181,10 +287,14 @@ export function OnboardingFlow() {
       )}
 
       {loading && !pendingQuestion && (
-        <p className="text-sm text-ink-500">Incipit is writing your profile…</p>
+        <p className="text-[13px] text-ink-500">Incipit is writing your profile…</p>
       )}
 
-      {error && <p className="text-sm text-accent-700">{error}</p>}
+      {error && (
+        <p className="text-[13px]" style={{ color: "#dc2626" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -192,8 +302,13 @@ export function OnboardingFlow() {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wider text-ink-400">{label}</dt>
-      <dd className="mt-1 text-ink-800">{value || "—"}</dd>
+      <p className="field-label">{label}</p>
+      <p
+        className="mt-1.5"
+        style={{ fontSize: 14, color: value ? "#1a1a2e" : "#d4d4d8" }}
+      >
+        {value || "—"}
+      </p>
     </div>
   );
 }
