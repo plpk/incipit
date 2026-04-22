@@ -81,6 +81,22 @@ export async function POST(req: Request) {
   try {
     assertServerEnv();
     const json = await req.json();
+    // Log shape (not file_base64 contents — they're huge) so prod logs can
+    // be correlated with client console output when chasing weird errors.
+    const jsonForLog = json as Record<string, unknown>;
+    console.log("[documents.POST] received", {
+      original_filename: jsonForLog?.original_filename,
+      file_type: jsonForLog?.file_type,
+      file_base64_len:
+        typeof jsonForLog?.file_base64 === "string"
+          ? (jsonForLog.file_base64 as string).length
+          : null,
+      provenance: jsonForLog?.provenance,
+      research_profile_id: jsonForLog?.research_profile_id,
+      is_outside_research: jsonForLog?.is_outside_research,
+      side_collection_name: jsonForLog?.side_collection_name,
+      edited_fields: jsonForLog?.edited_fields,
+    });
     const parsed = BodySchema.safeParse(json);
     if (!parsed.success) {
       const issues = parsed.error.issues.map((i) => {
@@ -88,6 +104,7 @@ export async function POST(req: Request) {
         const label = FIELD_LABELS[path] ?? path;
         return { field: path, label, message: i.message };
       });
+      console.error("[documents.POST] zod validation failed", issues);
       const first = issues[0];
       return NextResponse.json(
         {

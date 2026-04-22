@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useRouter } from "next/navigation";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
@@ -96,6 +96,31 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisSummary | null>(null);
   const router = useRouter();
+
+  // Catch any error/rejection that escapes our try/catch — render errors,
+  // useEffect throws, async tasks. Logs the source so we can pin down the
+  // "string did not match the expected pattern" DOMException.
+  useEffect(() => {
+    const onError = (ev: ErrorEvent) => {
+      console.error(
+        "[window.error]",
+        "message:", ev.message,
+        "filename:", ev.filename,
+        "lineno:", ev.lineno,
+        "colno:", ev.colno,
+        "error:", ev.error,
+      );
+    };
+    const onRejection = (ev: PromiseRejectionEvent) => {
+      console.error("[unhandledrejection]", "reason:", ev.reason);
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
 
   const onDrop = useCallback(
     async (accepted: File[]) => {
@@ -239,34 +264,96 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     if (!fields || !file || !fileBase64) return;
     setStage("saving");
     setError(null);
+
+    // Diagnostic logging — every value being submitted, plus the exact error
+    // site if anything throws. Helps trace the cryptic DOMException some
+    // browsers raise from native input/URL APIs.
+    const payload = {
+      research_profile_id: profileId,
+      original_filename: file.name,
+      file_base64: fileBase64,
+      file_type: file.type,
+      fields,
+      entities: extraction?.entities ?? [],
+      research_note: researchNote,
+      research_note_is_standing: noteIsStanding,
+      provenance,
+      is_outside_research: saveToSideCollection,
+      outside_research_reason: extraction?.outside_research_reason,
+      side_collection_name: saveToSideCollection
+        ? sideCollectionName || "Outside current research"
+        : undefined,
+      edited_fields: Array.from(editedFields),
+      ai_originals: aiOriginals,
+    };
+    console.group("[handleSave] submitting document");
+    console.log("file.name:", file.name);
+    console.log("file.type:", file.type);
+    console.log("file.size:", file.size);
+    console.log("fileBase64 length:", fileBase64.length);
+    console.log("provenance:", provenance);
+    console.log("fields (values only):", {
+      publication_name: fields.publication_name.value,
+      publication_date: fields.publication_date.value,
+      title_subject: fields.title_subject.value,
+      author: fields.author.value,
+      language: fields.language.value,
+      extracted_text_len: fields.extracted_text.value?.length ?? 0,
+    });
+    console.log("entities count:", payload.entities.length);
+    console.log("research_note length:", researchNote.length);
+    console.log("edited_fields:", payload.edited_fields);
+    console.log(
+      "is_outside_research:",
+      payload.is_outside_research,
+      "side_collection_name:",
+      payload.side_collection_name,
+    );
+    console.groupEnd();
+
+    let body: string;
+    try {
+      body = JSON.stringify(payload);
+      console.log("[handleSave] JSON.stringify OK, body length:", body.length);
+    } catch (jsonErr) {
+      console.error("[handleSave] JSON.stringify threw:", jsonErr);
+      setError(
+        `Failed to serialize form data: ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}`,
+      );
+      setStage("error");
+      return;
+    }
+
     try {
       const res = await fetch("/api/documents", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          research_profile_id: profileId,
-          original_filename: file.name,
-          file_base64: fileBase64,
-          file_type: file.type,
-          fields,
-          entities: extraction?.entities ?? [],
-          research_note: researchNote,
-          research_note_is_standing: noteIsStanding,
-          provenance,
-          is_outside_research: saveToSideCollection,
-          outside_research_reason: extraction?.outside_research_reason,
-          side_collection_name: saveToSideCollection
-            ? sideCollectionName || "Outside current research"
-            : undefined,
-          edited_fields: Array.from(editedFields),
-          ai_originals: aiOriginals,
-        }),
+        body,
       });
-      const data = await res.json();
+      console.log("[handleSave] fetch returned status:", res.status);
+      let data: { error?: string; field?: string; document?: { id: string } };
+      try {
+        data = await res.json();
+      } catch (jsonErr) {
+        const text = await res.text().catch(() => "<no body>");
+        console.error(
+          "[handleSave] response.json() threw:",
+          jsonErr,
+          "raw body:",
+          text,
+        );
+        throw new Error(
+          `Server returned non-JSON response (status ${res.status}): ${text.slice(0, 200)}`,
+        );
+      }
       if (!res.ok) {
+        console.error("[handleSave] server error response:", data);
         // Server returns { error, field?, issues? } — the error string is
         // already prefixed with the human-readable field label when known.
-        throw new Error(data.error ?? "Save failed");
+        throw new Error(data.error ?? `Save failed (status ${res.status})`);
+      }
+      if (!data.document) {
+        throw new Error("Server response missing document field");
       }
       const newId: string = data.document.id;
       setSavedDocId(newId);
@@ -300,7 +387,28 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       }
       setStage("done");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      // Detailed error logging — the cryptic "string did not match the
+      // expected pattern" bug was hard to source. Surface every angle.
+      console.group("[handleSave] caught error");
+      console.error("error:", e);
+      console.error(
+        "constructor:",
+        (e as { constructor?: { name?: string } })?.constructor?.name,
+      );
+      if (e instanceof Error) {
+        console.error("name:", e.name);
+        console.error("message:", e.message);
+        console.error("stack:", e.stack);
+      }
+      if (e && typeof e === "object" && "code" in e) {
+        console.error("code:", (e as { code: unknown }).code);
+      }
+      console.groupEnd();
+      const detail = e instanceof Error ? e.message : String(e);
+      const kind =
+        (e as { constructor?: { name?: string } })?.constructor?.name ??
+        "Error";
+      setError(`[${kind}] ${detail}`);
       setStage("error");
     }
   }
