@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { extractFromImage, type MediaInput } from "@/lib/vision-extraction";
 import { getCurrentProfile } from "@/lib/queries";
 import { getServerSupabase } from "@/lib/supabase/server";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
+// Accepted upload MIME types — mirrors /api/upload-url.
 const ACCEPTED: Record<string, MediaInput["mediaType"]> = {
   "image/png": "image/png",
   "image/jpeg": "image/jpeg",
@@ -17,52 +19,56 @@ const ACCEPTED: Record<string, MediaInput["mediaType"]> = {
   "application/pdf": "application/pdf",
 };
 
+const BodySchema = z.object({
+  file_path: z.string().min(1),
+  file_type: z.string().min(1),
+  original_filename: z.string().min(1),
+});
+
 export async function POST(req: Request) {
   try {
     assertServerEnv();
 
-    const form = await req.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
+    const parsed = BodySchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid request" },
+        { status: 400 },
+      );
     }
+    const body = parsed.data;
 
-    const mediaType = ACCEPTED[file.type];
+    const mediaType = ACCEPTED[body.file_type];
     if (!mediaType) {
       return NextResponse.json(
-        { error: `Unsupported file type: ${file.type}` },
+        { error: `Unsupported file type: ${body.file_type}` },
         { status: 400 },
       );
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64 = buffer.toString("base64");
-
-    // Upload to Supabase storage now so the save step only has to write
-    // the DB row. Keeps /api/documents's request body small (was sending
-    // the whole base64 blob → 413 on PDFs above ~3MB).
+    // Pull the bytes from Supabase storage. The client uploaded them
+    // there directly via a signed URL — they never pass through this
+    // function as a request body (so Vercel's 4.5MB edge cap does not
+    // apply regardless of the PDF size).
     const supabase = getServerSupabase();
-    const ext = extensionFor(file.type, file.name);
-    const storagePath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
-
-    const { error: uploadErr } = await supabase.storage
+    const { data: blob, error: dlErr } = await supabase.storage
       .from(env.supabaseBucket)
-      .upload(storagePath, buffer, {
-        contentType: file.type,
-        upsert: false,
-      });
-    if (uploadErr) {
-      console.error("[extract] storage upload failed", uploadErr);
+      .download(body.file_path);
+    if (dlErr || !blob) {
+      console.error("[extract] storage download failed", dlErr);
       return NextResponse.json(
-        { error: `Storage upload failed: ${uploadErr.message}` },
+        { error: `Storage download failed: ${dlErr?.message ?? "no blob"}` },
         { status: 500 },
       );
     }
 
+    const arrayBuffer = await blob.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString("base64");
+
     const { data: publicUrlData } = supabase.storage
       .from(env.supabaseBucket)
-      .getPublicUrl(storagePath);
+      .getPublicUrl(body.file_path);
 
     const profile = await getCurrentProfile();
     const extraction = await extractFromImage({ mediaType, base64 }, profile);
@@ -71,11 +77,11 @@ export async function POST(req: Request) {
       extraction,
       profileId: profile?.id ?? null,
       upload: {
-        file_path: storagePath,
+        file_path: body.file_path,
         file_url: publicUrlData.publicUrl,
-        file_type: file.type,
+        file_type: body.file_type,
         file_size_bytes: buffer.byteLength,
-        original_filename: file.name,
+        original_filename: body.original_filename,
       },
     });
   } catch (err) {
@@ -83,17 +89,4 @@ export async function POST(req: Request) {
     console.error("[extract] failed", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
-
-function extensionFor(mimeType: string, filename: string): string {
-  const m = filename.match(/\.([a-z0-9]{1,6})$/i);
-  if (m) return `.${m[1].toLowerCase()}`;
-  const map: Record<string, string> = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "application/pdf": ".pdf",
-  };
-  return map[mimeType] ?? "";
 }
