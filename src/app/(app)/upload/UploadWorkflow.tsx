@@ -101,6 +101,13 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   // useEffect throws, async tasks. Logs the source so we can pin down the
   // "string did not match the expected pattern" DOMException.
   useEffect(() => {
+    // Cache-bust marker — confirm the freshly-deployed bundle is loaded.
+    // If the user reports the bug and this banner is NOT in their console,
+    // their browser is serving a stale bundle and they need to hard-refresh.
+    console.log(
+      "%c[UploadWorkflow build 2026-04-22-defensive]",
+      "background:#0d9488;color:#fff;padding:2px 6px;border-radius:3px;",
+    );
     const onError = (ev: ErrorEvent) => {
       console.error(
         "[window.error]",
@@ -802,6 +809,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         <div className="card" style={{ padding: "20px 24px" }}>
           <span className="section-label">Side collection name</span>
           <input
+            type="text"
             className="input-field mt-3"
             value={sideCollectionName}
             onChange={(e) => setSideCollectionName(e.target.value)}
@@ -903,6 +911,10 @@ function FieldEditor({
         />
       ) : (
         <input
+          type="text"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           className={`input-field mt-3 ${mono ? "font-mono" : ""}`}
           style={{ fontSize: mono ? 13 : 14 }}
           value={value}
@@ -1042,6 +1054,10 @@ function ProvenanceField({
         )}
       </div>
       <input
+        type="text"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
         className={`input-field mt-2 ${mono ? "font-mono" : ""}`}
         style={{ fontSize: mono ? 13 : 14 }}
         value={value}
