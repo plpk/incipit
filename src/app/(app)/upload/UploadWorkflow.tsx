@@ -263,7 +263,11 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      if (!res.ok) {
+        // Server returns { error, field?, issues? } — the error string is
+        // already prefixed with the human-readable field label when known.
+        throw new Error(data.error ?? "Save failed");
+      }
       const newId: string = data.document.id;
       setSavedDocId(newId);
 
@@ -870,7 +874,10 @@ function ProvenanceBlock({
         <div>
           <p className="field-label">Date found</p>
           <input
-            type="date"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="2026-04-21, April 2026, or 2026"
             className="input-field mt-2 font-mono"
             style={{ fontSize: 13 }}
             value={provenance.discovery_date}
