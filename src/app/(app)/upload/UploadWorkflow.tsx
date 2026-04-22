@@ -7,7 +7,22 @@ import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { entityClass, type EntityKind } from "@/lib/design";
 import type { ConfidenceLevel, VisionExtraction } from "@/lib/types";
 
-type Stage = "idle" | "uploading" | "extracting" | "review" | "saving" | "done" | "error";
+type Stage =
+  | "idle"
+  | "uploading"
+  | "extracting"
+  | "review"
+  | "saving"
+  | "analyzing"
+  | "done"
+  | "error";
+
+type AnalysisSummary = {
+  connectionCount: number;
+  noteMatchCount: number;
+  fitsResearchProfile: boolean;
+  outsideExplanation: string | null;
+};
 
 type ProvenanceState = {
   archive_name: string;
@@ -79,6 +94,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [sideCollectionName, setSideCollectionName] = useState("");
 
   const [savedDocId, setSavedDocId] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisSummary | null>(null);
   const router = useRouter();
 
   const onDrop = useCallback(
@@ -216,6 +232,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     setProvenanceConf(EMPTY_PROVENANCE_CONF);
     setStage("idle");
     setSavedDocId(null);
+    setAnalysis(null);
   }
 
   async function handleSave() {
@@ -247,7 +264,36 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
-      setSavedDocId(data.document.id);
+      const newId: string = data.document.id;
+      setSavedDocId(newId);
+
+      // Kick off cross-document analysis. Don't block the save on failures —
+      // the document is already committed.
+      setStage("analyzing");
+      try {
+        const aRes = await fetch(
+          `/api/documents/${newId}/analyze-connections`,
+          { method: "POST" },
+        );
+        const aData = await aRes.json();
+        if (aRes.ok && aData?.analysis) {
+          const a = aData.analysis as {
+            connections: Array<{ matched_note_id: string | null }>;
+            matched_notes: unknown[];
+            fits_research_profile: boolean;
+            outside_research_explanation: string | null;
+          };
+          setAnalysis({
+            connectionCount: a.connections.length,
+            noteMatchCount: a.connections.filter((c) => c.matched_note_id)
+              .length,
+            fitsResearchProfile: a.fits_research_profile,
+            outsideExplanation: a.outside_research_explanation,
+          });
+        }
+      } catch (aErr) {
+        console.error("analyze-connections failed", aErr);
+      }
       setStage("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -300,7 +346,17 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     );
   }
 
-  if (stage === "uploading" || stage === "extracting") {
+  if (stage === "uploading" || stage === "extracting" || stage === "analyzing") {
+    const title =
+      stage === "uploading"
+        ? "Reading your file…"
+        : stage === "extracting"
+          ? "Opus 4.7 is reading the image…"
+          : "Analyzing connections across your archive…";
+    const subtitle =
+      stage === "analyzing"
+        ? "Comparing this document against every earlier upload and every research note you've saved."
+        : "This can take 20–60 seconds for a dense page. Keep this window open.";
     return (
       <div className="card flex flex-col items-center gap-5 text-center animate-fade-up" style={{ padding: "64px 32px" }}>
         <Spinner />
@@ -308,11 +364,9 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           className="font-display font-bold text-ink-900"
           style={{ fontSize: 18, letterSpacing: "-0.02em" }}
         >
-          {stage === "uploading" ? "Reading your file…" : "Opus 4.7 is reading the image…"}
+          {title}
         </p>
-        <p className="text-[14px] text-ink-500">
-          This can take 20–60 seconds for a dense page. Keep this window open.
-        </p>
+        <p className="text-[14px] text-ink-500">{subtitle}</p>
       </div>
     );
   }
@@ -330,6 +384,94 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         <p className="mt-2 text-[14px] text-ink-500">
           All fields you touched are marked as verified (T1).
         </p>
+
+        {analysis && (
+          <div className="mt-6 flex flex-col gap-3">
+            {analysis.connectionCount > 0 && (
+              <div
+                className="rounded-card-lg"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(13,148,136,0.06), rgba(6,182,212,0.04))",
+                  border: "1px solid rgba(13,148,136,0.15)",
+                  padding: "16px 20px",
+                }}
+              >
+                <p
+                  className="font-display font-bold"
+                  style={{
+                    fontSize: 14,
+                    color: "#0d9488",
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  ✦ {analysis.connectionCount} connection
+                  {analysis.connectionCount === 1 ? "" : "s"} surfaced
+                </p>
+                <p className="mt-1 text-[13px] text-ink-600">
+                  Incipit found{" "}
+                  {analysis.connectionCount === 1 ? "an overlap" : "overlaps"}{" "}
+                  with documents already in your archive. Open the document to
+                  review them.
+                </p>
+              </div>
+            )}
+            {analysis.noteMatchCount > 0 && (
+              <div
+                className="rounded-card-lg"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(13,148,136,0.1), rgba(6,182,212,0.05))",
+                  border: "1px solid rgba(13,148,136,0.25)",
+                  padding: "16px 20px",
+                }}
+              >
+                <p
+                  className="font-display font-bold"
+                  style={{ fontSize: 14, color: "#0d9488" }}
+                >
+                  A research hunch paid off
+                </p>
+                <p className="mt-1 text-[13px] text-ink-600">
+                  This document matches {analysis.noteMatchCount} research note
+                  {analysis.noteMatchCount === 1 ? "" : "s"} you left on an
+                  earlier upload.
+                </p>
+              </div>
+            )}
+            {!analysis.fitsResearchProfile && analysis.outsideExplanation && (
+              <div
+                className="rounded-card-lg"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(217,119,6,0.06), rgba(217,119,6,0.03))",
+                  border: "1px solid rgba(217,119,6,0.15)",
+                  padding: "16px 20px",
+                }}
+              >
+                <p
+                  className="font-display font-bold"
+                  style={{ fontSize: 14, color: "#92400e" }}
+                >
+                  Outside current research scope
+                </p>
+                <p className="mt-1 text-[13px] text-ink-600">
+                  {analysis.outsideExplanation} Saved to a side collection for
+                  later.
+                </p>
+              </div>
+            )}
+            {analysis.connectionCount === 0 &&
+              analysis.noteMatchCount === 0 &&
+              analysis.fitsResearchProfile && (
+                <p className="text-[13px] text-ink-500">
+                  No overlapping connections yet — as your archive grows, Incipit
+                  will start surfacing them here.
+                </p>
+              )}
+          </div>
+        )}
+
         <div className="mt-6 flex flex-wrap gap-3">
           <button className="btn-primary" onClick={() => resetForNext(batchMode)}>
             Upload another
