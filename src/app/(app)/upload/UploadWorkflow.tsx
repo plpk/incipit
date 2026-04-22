@@ -27,6 +27,49 @@ function sanitizeFilename(name: string): string {
   return cleaned || "upload";
 }
 
+// Safe JSON reader: calling res.json() on a non-JSON body throws a
+// DOMException in WebKit (the exact "The string did not match the
+// expected pattern." error we've been chasing). This reads the body as
+// text first, logs the raw status + content-type + preview, and only
+// attempts JSON.parse when the shape looks right — converting every
+// other failure mode into a clear Error the UI can display.
+async function readJsonResponse<T = unknown>(
+  label: string,
+  res: Response,
+): Promise<T> {
+  const contentType = res.headers.get("content-type") ?? "";
+  const text = await res.text();
+  console.log(
+    `[${label}] status=${res.status} content-type="${contentType}" body-length=${text.length}`,
+  );
+  if (!text) {
+    throw new Error(
+      `${label}: server returned an empty body (status ${res.status})`,
+    );
+  }
+  if (!contentType.toLowerCase().includes("application/json")) {
+    // Vercel 504/413/404/500 error pages come back as HTML. Surface the
+    // status + a short preview so the user sees what actually happened.
+    console.error(`[${label}] non-JSON body preview:`, text.slice(0, 300));
+    throw new Error(
+      `${label}: server returned a ${res.status} ${res.statusText || "error"} (not JSON). ${text.slice(0, 200)}`,
+    );
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    console.error(
+      `[${label}] JSON.parse threw on claimed-JSON body:`,
+      e,
+      "preview:",
+      text.slice(0, 300),
+    );
+    throw new Error(
+      `${label}: server returned status ${res.status} with malformed JSON (${text.length} bytes)`,
+    );
+  }
+}
+
 type Stage =
   | "idle"
   | "uploading"
@@ -133,7 +176,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     // If the user reports the bug and this banner is NOT in their console,
     // their browser is serving a stale bundle and they need to hard-refresh.
     console.log(
-      "%c[UploadWorkflow build 2026-04-22-parens-trace]",
+      "%c[UploadWorkflow build 2026-04-22-safe-json]",
       "background:#0d9488;color:#fff;padding:2px 6px;border-radius:3px;",
     );
     const onError = (ev: ErrorEvent) => {
@@ -197,7 +240,13 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           }),
         });
         step = "upload-url.json()";
-        const urlData = await urlRes.json();
+        const urlData = await readJsonResponse<{
+          path: string;
+          token: string;
+          signed_url: string;
+          public_url: string;
+          error?: string;
+        }>("upload-url", urlRes);
         if (!urlRes.ok) {
           throw new Error(urlData.error ?? "Could not mint upload URL");
         }
@@ -232,11 +281,19 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           }),
         });
         step = "extract.json()";
-        const data = await res.json();
+        const data = await readJsonResponse<{
+          extraction?: VisionExtraction;
+          profileId?: string | null;
+          upload?: UploadedFile;
+          error?: string;
+        }>("extract", res);
         if (!res.ok) throw new Error(data.error ?? "Extraction failed");
 
         if (!data.upload) {
           throw new Error("Extract response missing upload reference");
+        }
+        if (!data.extraction) {
+          throw new Error("Extract response missing extraction");
         }
         step = "setUploaded";
         setUploaded(data.upload as UploadedFile);
@@ -448,22 +505,11 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         headers: { "content-type": "application/json" },
         body,
       });
-      console.log("[handleSave] fetch returned status:", res.status);
-      let data: { error?: string; field?: string; document?: { id: string } };
-      try {
-        data = await res.json();
-      } catch (jsonErr) {
-        const text = await res.text().catch(() => "<no body>");
-        console.error(
-          "[handleSave] response.json() threw:",
-          jsonErr,
-          "raw body:",
-          text,
-        );
-        throw new Error(
-          `Server returned non-JSON response (status ${res.status}): ${text.slice(0, 200)}`,
-        );
-      }
+      const data = await readJsonResponse<{
+        error?: string;
+        field?: string;
+        document?: { id: string };
+      }>("documents", res);
       if (!res.ok) {
         console.error("[handleSave] server error response:", data);
         // Server returns { error, field?, issues? } — the error string is
@@ -484,7 +530,14 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           `/api/documents/${newId}/analyze-connections`,
           { method: "POST" },
         );
-        const aData = await aRes.json();
+        const aData = await readJsonResponse<{
+          analysis?: {
+            connections: Array<{ matched_note_id: string | null }>;
+            matched_notes: unknown[];
+            fits_research_profile: boolean;
+            outside_research_explanation: string | null;
+          };
+        }>("analyze", aRes);
         if (aRes.ok && aData?.analysis) {
           const a = aData.analysis as {
             connections: Array<{ matched_note_id: string | null }>;
