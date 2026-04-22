@@ -377,7 +377,9 @@ export async function runAnalysis(input: AnalysisInput): Promise<AnalysisResult>
   const response = await client.messages.create({
     model: OPUS_MODEL,
     max_tokens: 4096,
-    temperature: 0,
+    // Opus 4.7 rejects the `temperature` parameter (deprecated for this
+    // model). The deterministic output we need comes from the strict
+    // JSON-only system prompt.
     system: SYSTEM_PROMPT,
     messages: [
       {
