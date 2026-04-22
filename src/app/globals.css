@@ -251,6 +251,17 @@ body::after {
     border-bottom: 1px solid rgba(0, 0, 0, 0.04);
   }
 
+  /* Document thumbnail hover lift */
+  .thumbnail-lift {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+  }
+  .thumbnail-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(0, 0, 0, 0.04),
+      inset 0 0 0 1px rgba(0, 0, 0, 0.03) !important;
+  }
+
   /* Logo tile */
   .logo-tile {
     @apply inline-flex h-8 w-8 items-center justify-center font-display font-extrabold text-white;

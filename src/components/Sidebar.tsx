@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useCurrentDocument } from "@/components/CurrentDocumentProvider";
+import { DocumentThumbnail } from "@/components/DocumentThumbnail";
 
 const NAV = [
   { href: "/upload", label: "Upload", icon: UploadIcon },
@@ -14,6 +16,7 @@ const NAV = [
 export function Sidebar() {
   const pathname = usePathname();
   const onDocument = pathname?.startsWith("/document/");
+  const currentDoc = useCurrentDocument();
 
   return (
     <aside
@@ -75,15 +78,24 @@ export function Sidebar() {
         })}
       </nav>
 
-      {onDocument && (
+      {onDocument && currentDoc && (
         <div className="mt-8 px-2">
           <p className="section-label mb-3">Current document</p>
-          <DocumentThumbnail />
+          <DocumentThumbnail
+            fileUrl={currentDoc.file_url}
+            fileType={currentDoc.file_type}
+            filename={currentDoc.original_filename}
+          />
           <p
-            className="mt-3 truncate font-mono"
-            style={{ fontSize: 10, color: "#a1a1aa" }}
+            className="mt-3 break-all"
+            style={{
+              fontFamily: "var(--font-body)",
+              fontSize: 10,
+              color: "#a1a1aa",
+              lineHeight: 1.4,
+            }}
           >
-            current scan preview
+            {currentDoc.original_filename}
           </p>
         </div>
       )}
@@ -95,40 +107,6 @@ export function Sidebar() {
         </p>
       </div>
     </aside>
-  );
-}
-
-function DocumentThumbnail() {
-  // Stylised paper preview — decorative, not the actual scan
-  return (
-    <div
-      className="relative overflow-hidden rounded-lg"
-      style={{
-        aspectRatio: "0.72",
-        background:
-          "linear-gradient(180deg, #f5f0e4 0%, #ece3d0 100%)",
-        boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
-      }}
-    >
-      <div className="absolute inset-0 p-3">
-        <div className="h-1 w-10 rounded bg-black/10" />
-        <div className="mt-2 h-1 w-16 rounded bg-black/10" />
-        <div className="mt-4 space-y-1">
-          <div className="h-[2px] w-full rounded bg-black/10" />
-          <div className="h-[2px] w-[90%] rounded bg-black/10" />
-          <div className="h-[2px] w-[95%] rounded bg-black/10" />
-          <div className="h-[2px] w-[80%] rounded bg-black/10" />
-          <div className="h-[2px] w-[92%] rounded bg-black/10" />
-          <div className="h-[2px] w-[75%] rounded bg-black/10" />
-        </div>
-        <div className="mt-3 space-y-1">
-          <div className="h-[2px] w-full rounded bg-black/10" />
-          <div className="h-[2px] w-[88%] rounded bg-black/10" />
-          <div className="h-[2px] w-[93%] rounded bg-black/10" />
-          <div className="h-[2px] w-[70%] rounded bg-black/10" />
-        </div>
-      </div>
-    </div>
   );
 }
 

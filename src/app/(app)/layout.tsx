@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { MobileHeader } from "@/components/MobileHeader";
+import { CurrentDocumentProvider } from "@/components/CurrentDocumentProvider";
 import { env } from "@/lib/env";
 import { getCurrentProfile } from "@/lib/queries";
 
@@ -27,12 +28,14 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <MobileHeader />
-        <main className="flex-1">{children}</main>
+    <CurrentDocumentProvider>
+      <div className="flex min-h-screen">
+        <Sidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <MobileHeader />
+          <main className="flex-1">{children}</main>
+        </div>
       </div>
-    </div>
+    </CurrentDocumentProvider>
   );
 }
