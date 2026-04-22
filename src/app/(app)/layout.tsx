@@ -31,9 +31,7 @@ export default async function AppLayout({
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileHeader />
-        <main className="flex-1">
-          <div className="mx-auto max-w-5xl px-6 py-10">{children}</div>
-        </main>
+        <main className="flex-1">{children}</main>
       </div>
     </div>
   );

@@ -13,39 +13,122 @@ const NAV = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const onDocument = pathname?.startsWith("/document/");
+
   return (
-    <aside className="hidden w-64 shrink-0 flex-col border-r border-parchment-200 bg-white md:flex">
-      <Link href="/" className="flex items-center gap-2 px-6 py-6">
-        <span className="inline-block h-8 w-8 rounded-full bg-ink-900" aria-hidden />
-        <span className="font-serif text-xl font-semibold tracking-tight">
-          Incipit
+    <aside
+      className="hidden w-60 shrink-0 flex-col md:flex"
+      style={{
+        background: "rgba(255,255,255,0.55)",
+        backdropFilter: "blur(40px)",
+        WebkitBackdropFilter: "blur(40px)",
+        borderRight: "1px solid rgba(0,0,0,0.06)",
+        padding: "24px 16px",
+      }}
+    >
+      {/* Logo */}
+      <Link
+        href="/"
+        className="flex items-center gap-3 px-2 py-2"
+      >
+        <span className="logo-tile">I</span>
+        <span className="flex flex-col leading-tight">
+          <span
+            className="font-display font-bold text-ink-900"
+            style={{ fontSize: 17, letterSpacing: "-0.03em" }}
+          >
+            Incipit
+          </span>
+          <span
+            className="text-ink-400"
+            style={{ fontSize: 11, fontWeight: 400 }}
+          >
+            Research archive
+          </span>
         </span>
       </Link>
-      <nav className="flex-1 space-y-1 px-3">
+
+      {/* Nav */}
+      <nav className="mt-8 flex flex-col gap-1">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + "/");
+          const active = pathname === href || pathname?.startsWith(href + "/");
           return (
             <Link
               key={href}
               href={href}
               className={cn(
-                "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition",
+                "group flex items-center gap-3 rounded-btn px-3 py-2.5 text-[13.5px] font-medium transition",
                 active
-                  ? "bg-parchment-100 text-ink-900"
-                  : "text-ink-600 hover:bg-parchment-100 hover:text-ink-900",
+                  ? "bg-white text-ink-900 shadow-card"
+                  : "text-ink-500 hover:bg-white/60 hover:text-ink-900",
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon
+                className={cn(
+                  "h-[18px] w-[18px] transition",
+                  active ? "text-brand" : "text-ink-400 group-hover:text-ink-600",
+                )}
+              />
               {label}
             </Link>
           );
         })}
       </nav>
-      <div className="px-6 py-6 text-xs text-ink-400">
-        <p>Incipit v0.1</p>
-        <p className="mt-1">Primary-source research, one document at a time.</p>
+
+      {onDocument && (
+        <div className="mt-8 px-2">
+          <p className="section-label mb-3">Current document</p>
+          <DocumentThumbnail />
+          <p
+            className="mt-3 truncate font-mono"
+            style={{ fontSize: 10, color: "#a1a1aa" }}
+          >
+            current scan preview
+          </p>
+        </div>
+      )}
+
+      <div className="mt-auto px-2 pt-6">
+        <p className="text-[11px] font-medium text-ink-400">Incipit v0.1</p>
+        <p className="mt-1 text-[11px] text-ink-400">
+          Primary-source research, one document at a time.
+        </p>
       </div>
     </aside>
+  );
+}
+
+function DocumentThumbnail() {
+  // Stylised paper preview — decorative, not the actual scan
+  return (
+    <div
+      className="relative overflow-hidden rounded-lg"
+      style={{
+        aspectRatio: "0.72",
+        background:
+          "linear-gradient(180deg, #f5f0e4 0%, #ece3d0 100%)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.1)",
+      }}
+    >
+      <div className="absolute inset-0 p-3">
+        <div className="h-1 w-10 rounded bg-black/10" />
+        <div className="mt-2 h-1 w-16 rounded bg-black/10" />
+        <div className="mt-4 space-y-1">
+          <div className="h-[2px] w-full rounded bg-black/10" />
+          <div className="h-[2px] w-[90%] rounded bg-black/10" />
+          <div className="h-[2px] w-[95%] rounded bg-black/10" />
+          <div className="h-[2px] w-[80%] rounded bg-black/10" />
+          <div className="h-[2px] w-[92%] rounded bg-black/10" />
+          <div className="h-[2px] w-[75%] rounded bg-black/10" />
+        </div>
+        <div className="mt-3 space-y-1">
+          <div className="h-[2px] w-full rounded bg-black/10" />
+          <div className="h-[2px] w-[88%] rounded bg-black/10" />
+          <div className="h-[2px] w-[93%] rounded bg-black/10" />
+          <div className="h-[2px] w-[70%] rounded bg-black/10" />
+        </div>
+      </div>
+    </div>
   );
 }
 
