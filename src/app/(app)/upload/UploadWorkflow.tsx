@@ -72,11 +72,19 @@ const FIELD_LABELS: Record<keyof EditableFields, string> = {
   extracted_text: "Extracted text",
 };
 
+type UploadedFile = {
+  file_path: string;
+  file_url: string;
+  file_type: string;
+  file_size_bytes: number;
+  original_filename: string;
+};
+
 export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<VisionExtraction | null>(null);
   const [fields, setFields] = useState<EditableFields | null>(null);
@@ -144,16 +152,21 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       }
 
       try {
-        const arrayBuffer = await picked.arrayBuffer();
-        const base64 = bufferToBase64(arrayBuffer);
-        setFileBase64(base64);
-
         setStage("extracting");
         const form = new FormData();
         form.append("file", picked);
         const res = await fetch("/api/extract", { method: "POST", body: form });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Extraction failed");
+
+        // /api/extract both reads the vision extraction AND uploads the
+        // file to Supabase storage, returning the storage reference.
+        // Save only sends the reference — never the file bytes — keeping
+        // the /api/documents body well under Vercel's 4.5MB limit.
+        if (!data.upload) {
+          throw new Error("Extract response missing upload reference");
+        }
+        setUploaded(data.upload as UploadedFile);
 
         const ext: VisionExtraction = data.extraction;
         setExtraction(ext);
@@ -221,10 +234,10 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   });
 
   const canSave = useMemo(() => {
-    if (!fields) return false;
+    if (!fields || !uploaded) return false;
     if (saveToSideCollection && !sideCollectionName.trim()) return false;
     return stage === "review";
-  }, [fields, stage, saveToSideCollection, sideCollectionName]);
+  }, [fields, uploaded, stage, saveToSideCollection, sideCollectionName]);
 
   function updateField<K extends keyof EditableFields>(key: K, value: string) {
     setFields((prev) => {
@@ -251,7 +264,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   function resetForNext(keepProvenance: boolean) {
     setFile(null);
-    setFileBase64(null);
+    setUploaded(null);
     setPreview(null);
     setExtraction(null);
     setFields(null);
@@ -268,18 +281,20 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   }
 
   async function handleSave() {
-    if (!fields || !file || !fileBase64) return;
+    if (!fields || !file || !uploaded) return;
     setStage("saving");
     setError(null);
 
-    // Diagnostic logging — every value being submitted, plus the exact error
-    // site if anything throws. Helps trace the cryptic DOMException some
-    // browsers raise from native input/URL APIs.
+    // The file is already in Supabase storage (uploaded by /api/extract).
+    // Send only metadata + the storage reference — no file bytes in this
+    // request, so we stay well under Vercel's 4.5MB body limit.
     const payload = {
       research_profile_id: profileId,
-      original_filename: file.name,
-      file_base64: fileBase64,
-      file_type: file.type,
+      original_filename: uploaded.original_filename,
+      file_path: uploaded.file_path,
+      file_url: uploaded.file_url,
+      file_type: uploaded.file_type,
+      file_size_bytes: uploaded.file_size_bytes,
       fields,
       entities: extraction?.entities ?? [],
       research_note: researchNote,
@@ -297,7 +312,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     console.log("file.name:", file.name);
     console.log("file.type:", file.type);
     console.log("file.size:", file.size);
-    console.log("fileBase64 length:", fileBase64.length);
+    console.log("uploaded:", uploaded);
     console.log("provenance:", provenance);
     console.log("fields (values only):", {
       publication_name: fields.publication_name.value,
@@ -1086,15 +1101,3 @@ function Spinner() {
   );
 }
 
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(
-      null,
-      Array.from(bytes.subarray(i, i + chunk)),
-    );
-  }
-  return btoa(binary);
-}
