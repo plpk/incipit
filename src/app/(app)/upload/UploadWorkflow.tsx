@@ -13,6 +13,20 @@ import type { ConfidenceLevel, VisionExtraction } from "@/lib/types";
 // server resolves to and avoids a round-trip just to learn it.
 const STORAGE_BUCKET = "documents";
 
+// Strip anything that isn't a plain ASCII word character, dot, or dash.
+// The original filename is still preserved (sent separately as
+// `original_filename`) for the changelog. This sanitized form is what
+// goes into the signed-upload-URL request and anywhere a library might
+// put it into an HTTP header or a DOM selector.
+function sanitizeFilename(name: string): string {
+  const cleaned = name
+    .replace(/[^\w.\- ]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
+  return cleaned || "upload";
+}
+
 type Stage =
   | "idle"
   | "uploading"
@@ -119,7 +133,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
     // If the user reports the bug and this banner is NOT in their console,
     // their browser is serving a stale bundle and they need to hard-refresh.
     console.log(
-      "%c[UploadWorkflow build 2026-04-22-direct-upload]",
+      "%c[UploadWorkflow build 2026-04-22-parens-trace]",
       "background:#0d9488;color:#fff;padding:2px 6px;border-radius:3px;",
     );
     const onError = (ev: ErrorEvent) => {
@@ -151,31 +165,48 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       setStage("uploading");
       setFile(picked);
 
-      if (picked.type.startsWith("image/")) {
-        setPreview(URL.createObjectURL(picked));
-      } else {
-        setPreview(null);
-      }
+      console.group("[onDrop] starting upload");
+      console.log("file.name:", picked.name);
+      console.log("file.type:", picked.type);
+      console.log("file.size:", picked.size);
+      console.groupEnd();
 
+      let step: string = "init";
       try {
+        step = "url.createObjectURL";
+        if (picked.type.startsWith("image/")) {
+          setPreview(URL.createObjectURL(picked));
+        } else {
+          setPreview(null);
+        }
+
         // Step 1: ask the server for a signed upload URL. Tiny JSON request
         // in both directions — no file bytes touch a Vercel function.
+        // Send a sanitized filename (ASCII-safe, no parens/specials) for
+        // anything that might end up in a header or selector; the original
+        // filename is still stored separately for the changelog.
+        step = "fetch /api/upload-url";
+        const safeName = sanitizeFilename(picked.name);
+        console.log("[onDrop] sanitized name:", safeName);
         const urlRes = await fetch("/api/upload-url", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            filename: picked.name,
+            filename: safeName,
             file_type: picked.type,
           }),
         });
+        step = "upload-url.json()";
         const urlData = await urlRes.json();
         if (!urlRes.ok) {
           throw new Error(urlData.error ?? "Could not mint upload URL");
         }
+        console.log("[onDrop] got upload URL, path:", urlData.path);
 
         // Step 2: PUT the bytes directly to Supabase storage, bypassing
         // Vercel's 4.5MB request-body limit entirely. This is the only
         // place in the app where the file bytes cross the network.
+        step = "uploadToSignedUrl";
         const supabase = getBrowserSupabase();
         const { error: upErr } = await supabase.storage
           .from(STORAGE_BUCKET)
@@ -184,10 +215,12 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
             upsert: false,
           });
         if (upErr) throw new Error(`Upload to storage failed: ${upErr.message}`);
+        console.log("[onDrop] storage upload complete");
 
         // Step 3: ask the server to extract metadata. It downloads from
         // storage (server-side, no body limit on that direction) and
         // calls Opus. The request we send is just a storage reference.
+        step = "fetch /api/extract";
         setStage("extracting");
         const res = await fetch("/api/extract", {
           method: "POST",
@@ -198,12 +231,14 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
             original_filename: picked.name,
           }),
         });
+        step = "extract.json()";
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Extraction failed");
 
         if (!data.upload) {
           throw new Error("Extract response missing upload reference");
         }
+        step = "setUploaded";
         setUploaded(data.upload as UploadedFile);
 
         const ext: VisionExtraction = data.extraction;
@@ -250,9 +285,32 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           setSideCollectionName(ext.outside_research_reason?.slice(0, 60) ?? "");
         }
 
+        step = "review-ready";
         setStage("review");
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Upload failed");
+        // Same detailed capture as handleSave — the banner text will say
+        // which step and which DOMException constructor threw.
+        console.group("[onDrop] caught error");
+        console.error("step:", step);
+        console.error("error:", e);
+        console.error(
+          "constructor:",
+          (e as { constructor?: { name?: string } })?.constructor?.name,
+        );
+        if (e instanceof Error) {
+          console.error("name:", e.name);
+          console.error("message:", e.message);
+          console.error("stack:", e.stack);
+        }
+        if (e && typeof e === "object" && "code" in e) {
+          console.error("code:", (e as { code: unknown }).code);
+        }
+        console.groupEnd();
+        const detail = e instanceof Error ? e.message : String(e);
+        const kind =
+          (e as { constructor?: { name?: string } })?.constructor?.name ??
+          "Error";
+        setError(`[${kind} @ ${step}] ${detail}`);
         setStage("error");
       }
     },
