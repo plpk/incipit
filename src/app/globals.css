@@ -3,44 +3,297 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  /* Brand tokens (CSS vars mirror tailwind config so we can tweak later) */
+  --color-canvas: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-brand: #0d9488;
+  --color-brand-accent: #06b6d4;
+  --color-ink-900: #1a1a2e;
+  --color-ink-700: #3f3f46;
+  --color-ink-600: #52525b;
+  --color-ink-500: #71717a;
+  --color-ink-400: #a1a1aa;
+  --color-ink-300: #d4d4d8;
+
+  --brand-gradient: linear-gradient(135deg, #0d9488, #06b6d4);
+  --brand-gradient-soft: linear-gradient(
+    135deg,
+    rgba(13, 148, 136, 0.04),
+    rgba(6, 182, 212, 0.03)
+  );
+  --brand-gradient-border: rgba(13, 148, 136, 0.08);
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04),
+    0 0 0 1px rgba(0, 0, 0, 0.03);
+  --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.06),
+    0 0 0 1px rgba(0, 0, 0, 0.04);
+  --shadow-btn: 0 2px 10px rgba(13, 148, 136, 0.25);
 }
 
 html,
 body {
-  background: theme("colors.parchment.50");
-  color: theme("colors.ink.800");
-  font-family: var(--font-sans);
+  background: var(--color-canvas);
+  color: var(--color-ink-900);
+  font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* Ambient background washes — decorative, non-interactive */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+  z-index: 0;
+}
+body::before {
+  top: -10%;
+  right: 0;
+  width: 40%;
+  height: 40%;
+  background: radial-gradient(
+    ellipse,
+    rgba(13, 148, 136, 0.04) 0%,
+    transparent 70%
+  );
+}
+body::after {
+  bottom: 0;
+  left: 15%;
+  width: 35%;
+  height: 30%;
+  background: radial-gradient(
+    ellipse,
+    rgba(6, 182, 212, 0.025) 0%,
+    transparent 70%
+  );
 }
 
 @layer components {
+  /* ————————————————————— CARDS ————————————————————— */
   .card {
-    @apply rounded-lg border border-parchment-200 bg-white shadow-card;
+    @apply rounded-card bg-surface;
+    box-shadow: var(--shadow-card);
+    transition: box-shadow 0.25s ease, transform 0.25s ease;
   }
+  .card-interactive:hover {
+    box-shadow: var(--shadow-card-hover);
+    transform: translateY(-1px);
+  }
+  .card-lg {
+    @apply rounded-card-lg bg-surface;
+    box-shadow: var(--shadow-card);
+  }
+
+  /* ————————————————————— BUTTONS ————————————————————— */
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-md bg-ink-800 px-4 py-2 text-sm font-medium text-white transition hover:bg-ink-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-btn px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--color-brand);
+    box-shadow: var(--shadow-btn);
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+  .btn-primary-gradient {
+    @apply inline-flex items-center justify-center rounded-btn px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--brand-gradient);
+    box-shadow: var(--shadow-btn);
+  }
+  .btn-pill {
+    @apply inline-flex items-center justify-center rounded-pill px-5 py-2 text-[13px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50;
+    background: var(--color-brand);
+    box-shadow: var(--shadow-btn);
   }
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-md border border-parchment-300 bg-white px-4 py-2 text-sm font-medium text-ink-700 transition hover:bg-parchment-100 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-btn px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50;
+    background: #f4f4f5;
+    color: #52525b;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.05);
   }
   .btn-ghost {
-    @apply inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium text-ink-600 transition hover:bg-parchment-100;
+    @apply inline-flex items-center justify-center rounded-btn px-3 py-2 text-sm font-medium transition;
+    color: #71717a;
   }
+  .btn-ghost:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: #3f3f46;
+  }
+
+  /* ————————————————————— INPUTS ————————————————————— */
   .input-field {
-    @apply w-full rounded-md border border-parchment-300 bg-white px-3 py-2 text-sm text-ink-800 placeholder:text-ink-300 focus:border-accent-400 focus:outline-none focus:ring-1 focus:ring-accent-400;
+    @apply w-full rounded-input border bg-white px-4 py-3 text-[14px] text-ink-900 transition placeholder:text-ink-400 focus:outline-none;
+    border-color: rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   }
-  .label {
-    @apply block text-sm font-medium text-ink-600;
+  .input-field:focus {
+    border-color: var(--color-brand);
+    box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
   }
-  .chip {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+
+  /* ————————————————————— LABELS ————————————————————— */
+  .section-label {
+    @apply text-[11px] font-bold uppercase tracking-[0.08em] text-ink-400;
+  }
+  .field-label {
+    @apply text-[11px] font-bold uppercase tracking-[0.08em] text-ink-400;
+  }
+
+  /* ————————————————————— PILL TABS ————————————————————— */
+  .pill-tab {
+    @apply inline-flex items-center gap-2 rounded-pill px-5 py-2 text-[13px] font-medium transition;
+    color: #71717a;
+  }
+  .pill-tab:hover:not(.pill-tab-active) {
+    color: #3f3f46;
+    background: rgba(0, 0, 0, 0.03);
+  }
+  .pill-tab-active {
+    background: var(--color-brand);
+    color: white;
+    font-weight: 600;
+    box-shadow: var(--shadow-btn);
+  }
+
+  /* ————————————————————— BADGES ————————————————————— */
+  .confidence-badge {
+    @apply inline-flex items-center rounded-pill px-2.5 py-[3px] text-[10px] font-bold uppercase tracking-wider;
+  }
+  .confidence-high {
+    color: #059669;
+    background: #ecfdf5;
+  }
+  .confidence-medium {
+    color: #d97706;
+    background: #fffbeb;
+  }
+  .confidence-low {
+    color: #dc2626;
+    background: #fef2f2;
+  }
+  .confidence-unable {
+    color: #a1a1aa;
+    background: #f4f4f5;
+  }
+
+  /* Entity chip */
+  .entity-chip {
+    @apply inline-flex items-center rounded-pill border px-3.5 py-1.5 text-[13px] font-medium;
+  }
+  .entity-person {
+    color: #c2410c;
+    background: #fff7ed;
+    border-color: #ffedd5;
+  }
+  .entity-place {
+    color: #334155;
+    background: #f1f5f9;
+    border-color: #e2e8f0;
+  }
+  .entity-org {
+    color: #92400e;
+    background: #fffbeb;
+    border-color: #fef3c7;
+  }
+  .entity-other {
+    color: #52525b;
+    background: #f4f4f5;
+    border-color: #e4e4e7;
+  }
+
+  /* Status / trust pills */
+  .pill-verified {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-[11px] font-semibold;
+    color: #059669;
+    background: #ecfdf5;
+  }
+  .pill-unconfirmed {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-[11px] font-semibold;
+    color: #71717a;
+    background: #f4f4f5;
+  }
+  .pill-flagged {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-[11px] font-semibold;
+    color: #dc2626;
+    background: #fef2f2;
+  }
+  .pill-brand-soft {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-[11px] font-semibold;
+    color: #0d9488;
+    background: var(--brand-gradient-soft);
+    border: 1px solid var(--brand-gradient-border);
+  }
+
+  /* Monospace utility block */
+  .mono-block {
+    @apply rounded-input px-3 py-2 font-mono text-[12px];
+    background: #f4f4f5;
+    color: #3f3f46;
+  }
+
+  /* Page heading family */
+  .h-display {
+    @apply font-display font-extrabold tracking-tightest text-ink-900;
+  }
+
+  /* Sticky top bar */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    background: rgba(247, 247, 245, 0.75);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  }
+
+  /* Logo tile */
+  .logo-tile {
+    @apply inline-flex h-8 w-8 items-center justify-center font-display font-extrabold text-white;
+    background: var(--brand-gradient);
+    border-radius: 10px;
+    font-size: 16px;
+    box-shadow: var(--shadow-glow, 0 4px 16px rgba(13, 148, 136, 0.25));
   }
 }
 
-.scroll-smooth-y {
-  scrollbar-gutter: stable;
+@layer utilities {
+  .animate-fade-up {
+    animation: fadeUp 0.3s ease both;
+  }
+  @keyframes fadeUp {
+    0% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  /* highlight entity inline inside AI paragraphs */
+  .ent-person {
+    color: #c2410c;
+    font-weight: 600;
+  }
+  .ent-place {
+    color: #334155;
+    font-weight: 600;
+  }
+  .ent-org {
+    color: #92400e;
+    font-weight: 600;
+  }
+}
+
+/* Ensure main content sits above ambient washes */
+main,
+aside,
+header {
+  position: relative;
+  z-index: 1;
 }
