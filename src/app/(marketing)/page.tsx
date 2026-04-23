@@ -2,8 +2,6 @@ import Link from "next/link";
 import { Reveal } from "@/components/marketing/Reveal";
 
 export const metadata = {
-  title:
-    "Incipit — The research brain that grows with every document you feed it",
   description:
     "Incipit turns fieldwork scans into a persistent, searchable, relationship-aware research archive.",
 };
