@@ -34,8 +34,12 @@ const ProvenanceSchema = z.object({
 const BodySchema = z.object({
   research_profile_id: z.string().uuid().nullable().optional(),
   original_filename: z.string().min(1),
-  file_base64: z.string().min(1),
+  // File is uploaded by /api/extract — this route receives the storage
+  // reference only, keeping the POST body under Vercel's 4.5MB limit.
+  file_path: z.string().min(1),
+  file_url: z.string().min(1),
   file_type: z.string().min(1),
+  file_size_bytes: z.number().int().nonnegative(),
   fields: z.object({
     publication_name: FieldSchema,
     publication_date: FieldSchema,
@@ -59,32 +63,71 @@ const BodySchema = z.object({
     .default({}),
 });
 
+const FIELD_LABELS: Record<string, string> = {
+  "provenance.archive_name": "Archive name",
+  "provenance.archive_location": "Location",
+  "provenance.acquisition_method": "How obtained",
+  "provenance.discovery_date": "Date found",
+  "provenance.catalog_reference": "Catalog reference",
+  "fields.publication_name.value": "Publication name",
+  "fields.publication_date.value": "Date",
+  "fields.title_subject.value": "Title / subject",
+  "fields.author.value": "Author",
+  "fields.language.value": "Language",
+  "fields.extracted_text.value": "Extracted text",
+  "research_note": "Research note",
+  "original_filename": "Original filename",
+  "file_path": "Storage path",
+  "file_url": "File URL",
+  "file_type": "File type",
+  "file_size_bytes": "File size",
+};
+
 export async function POST(req: Request) {
   try {
     assertServerEnv();
     const json = await req.json();
-    const body = BodySchema.parse(json);
+    // Log shape (not file_base64 contents — they're huge) so prod logs can
+    // be correlated with client console output when chasing weird errors.
+    const jsonForLog = json as Record<string, unknown>;
+    console.log("[documents.POST] received", {
+      original_filename: jsonForLog?.original_filename,
+      file_type: jsonForLog?.file_type,
+      file_path: jsonForLog?.file_path,
+      file_size_bytes: jsonForLog?.file_size_bytes,
+      provenance: jsonForLog?.provenance,
+      research_profile_id: jsonForLog?.research_profile_id,
+      is_outside_research: jsonForLog?.is_outside_research,
+      side_collection_name: jsonForLog?.side_collection_name,
+      edited_fields: jsonForLog?.edited_fields,
+    });
+    const parsed = BodySchema.safeParse(json);
+    if (!parsed.success) {
+      const issues = parsed.error.issues.map((i) => {
+        const path = i.path.join(".");
+        const label = FIELD_LABELS[path] ?? path;
+        return { field: path, label, message: i.message };
+      });
+      console.error("[documents.POST] zod validation failed", issues);
+      const first = issues[0];
+      return NextResponse.json(
+        {
+          error: `${first.label}: ${first.message}`,
+          field: first.field,
+          issues,
+        },
+        { status: 400 },
+      );
+    }
+    const body = parsed.data;
     const supabase = getServerSupabase();
 
-    // 1. Upload the file to storage.
-    const buffer = Buffer.from(body.file_base64, "base64");
-    const ext = extensionFor(body.file_type, body.original_filename);
-    const storagePath = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
+    // File was already uploaded by /api/extract — reuse the storage
+    // reference passed through by the client.
+    const storagePath = body.file_path;
+    const fileUrl = body.file_url;
 
-    const { error: uploadError } = await supabase.storage
-      .from(env.supabaseBucket)
-      .upload(storagePath, buffer, {
-        contentType: body.file_type,
-        upsert: false,
-      });
-    if (uploadError) throw uploadError;
-
-    const { data: publicUrlData } = supabase.storage
-      .from(env.supabaseBucket)
-      .getPublicUrl(storagePath);
-    const fileUrl = publicUrlData.publicUrl;
-
-    // 2. Build confidence map. Anything the historian edited becomes T1-ish
+    // Build confidence map. Anything the historian edited becomes T1-ish
     // per field; the doc-level trust tier is T1 if they looked at every field.
     const confidenceScores: Record<string, ConfidenceLevel> = {
       publication_name: body.fields.publication_name.confidence,
@@ -117,7 +160,7 @@ export async function POST(req: Request) {
         file_url: fileUrl,
         file_path: storagePath,
         file_type: body.file_type,
-        file_size_bytes: buffer.byteLength,
+        file_size_bytes: body.file_size_bytes,
         extracted_text: body.fields.extracted_text.value,
         publication_name: body.fields.publication_name.value,
         publication_date: body.fields.publication_date.value,
@@ -221,8 +264,18 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ document: doc });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const raw = err instanceof Error ? err.message : "Unknown error";
+    // Postgres errors from PostgREST surface as strings like
+    //   'invalid input syntax for type date: "April 2026"'
+    // Pull out the column if we can so the client can highlight the field.
+    let field: string | undefined;
+    const dateMatch = raw.match(/type date: "([^"]*)"/);
+    if (dateMatch) field = "provenance.discovery_date";
+    const message = field
+      ? `${FIELD_LABELS[field] ?? field}: ${raw}`
+      : raw;
+    console.error("[documents.POST] failed", err);
+    return NextResponse.json({ error: message, field }, { status: 500 });
   }
 }
 
@@ -295,15 +348,3 @@ export async function DELETE() {
   }
 }
 
-function extensionFor(mimeType: string, filename: string): string {
-  const m = filename.match(/\.([a-z0-9]{1,6})$/i);
-  if (m) return `.${m[1].toLowerCase()}`;
-  const map: Record<string, string> = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "application/pdf": ".pdf",
-  };
-  return map[mimeType] ?? "";
-}

@@ -1,11 +1,74 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { useRouter } from "next/navigation";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { entityClass, type EntityKind } from "@/lib/design";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 import type { ConfidenceLevel, VisionExtraction } from "@/lib/types";
+
+// Mirrors SUPABASE_STORAGE_BUCKET on the server (default "documents").
+// The bucket name is not a secret, so hardcoding matches what the
+// server resolves to and avoids a round-trip just to learn it.
+const STORAGE_BUCKET = "documents";
+
+// Strip anything that isn't a plain ASCII word character, dot, or dash.
+// The original filename is still preserved (sent separately as
+// `original_filename`) for the changelog. This sanitized form is what
+// goes into the signed-upload-URL request and anywhere a library might
+// put it into an HTTP header or a DOM selector.
+function sanitizeFilename(name: string): string {
+  const cleaned = name
+    .replace(/[^\w.\- ]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 120);
+  return cleaned || "upload";
+}
+
+// Safe JSON reader: calling res.json() on a non-JSON body throws a
+// DOMException in WebKit (the exact "The string did not match the
+// expected pattern." error we've been chasing). This reads the body as
+// text first, logs the raw status + content-type + preview, and only
+// attempts JSON.parse when the shape looks right — converting every
+// other failure mode into a clear Error the UI can display.
+async function readJsonResponse<T = unknown>(
+  label: string,
+  res: Response,
+): Promise<T> {
+  const contentType = res.headers.get("content-type") ?? "";
+  const text = await res.text();
+  console.log(
+    `[${label}] status=${res.status} content-type="${contentType}" body-length=${text.length}`,
+  );
+  if (!text) {
+    throw new Error(
+      `${label}: server returned an empty body (status ${res.status})`,
+    );
+  }
+  if (!contentType.toLowerCase().includes("application/json")) {
+    // Vercel 504/413/404/500 error pages come back as HTML. Surface the
+    // status + a short preview so the user sees what actually happened.
+    console.error(`[${label}] non-JSON body preview:`, text.slice(0, 300));
+    throw new Error(
+      `${label}: server returned a ${res.status} ${res.statusText || "error"} (not JSON). ${text.slice(0, 200)}`,
+    );
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch (e) {
+    console.error(
+      `[${label}] JSON.parse threw on claimed-JSON body:`,
+      e,
+      "preview:",
+      text.slice(0, 300),
+    );
+    throw new Error(
+      `${label}: server returned status ${res.status} with malformed JSON (${text.length} bytes)`,
+    );
+  }
+}
 
 type Stage =
   | "idle"
@@ -72,11 +135,19 @@ const FIELD_LABELS: Record<keyof EditableFields, string> = {
   extracted_text: "Extracted text",
 };
 
+type UploadedFile = {
+  file_path: string;
+  file_url: string;
+  file_type: string;
+  file_size_bytes: number;
+  original_filename: string;
+};
+
 export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<UploadedFile | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [extraction, setExtraction] = useState<VisionExtraction | null>(null);
   const [fields, setFields] = useState<EditableFields | null>(null);
@@ -97,6 +168,38 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   const [analysis, setAnalysis] = useState<AnalysisSummary | null>(null);
   const router = useRouter();
 
+  // Catch any error/rejection that escapes our try/catch — render errors,
+  // useEffect throws, async tasks. Logs the source so we can pin down the
+  // "string did not match the expected pattern" DOMException.
+  useEffect(() => {
+    // Cache-bust marker — confirm the freshly-deployed bundle is loaded.
+    // If the user reports the bug and this banner is NOT in their console,
+    // their browser is serving a stale bundle and they need to hard-refresh.
+    console.log(
+      "%c[UploadWorkflow build 2026-04-22-safe-json]",
+      "background:#0d9488;color:#fff;padding:2px 6px;border-radius:3px;",
+    );
+    const onError = (ev: ErrorEvent) => {
+      console.error(
+        "[window.error]",
+        "message:", ev.message,
+        "filename:", ev.filename,
+        "lineno:", ev.lineno,
+        "colno:", ev.colno,
+        "error:", ev.error,
+      );
+    };
+    const onRejection = (ev: PromiseRejectionEvent) => {
+      console.error("[unhandledrejection]", "reason:", ev.reason);
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
   const onDrop = useCallback(
     async (accepted: File[]) => {
       if (!accepted.length) return;
@@ -105,23 +208,95 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       setStage("uploading");
       setFile(picked);
 
-      if (picked.type.startsWith("image/")) {
-        setPreview(URL.createObjectURL(picked));
-      } else {
-        setPreview(null);
-      }
+      console.group("[onDrop] starting upload");
+      console.log("file.name:", picked.name);
+      console.log("file.type:", picked.type);
+      console.log("file.size:", picked.size);
+      console.groupEnd();
 
+      let step: string = "init";
       try {
-        const arrayBuffer = await picked.arrayBuffer();
-        const base64 = bufferToBase64(arrayBuffer);
-        setFileBase64(base64);
+        step = "url.createObjectURL";
+        if (picked.type.startsWith("image/")) {
+          setPreview(URL.createObjectURL(picked));
+        } else {
+          setPreview(null);
+        }
 
+        // Step 1: ask the server for a signed upload URL. Tiny JSON request
+        // in both directions — no file bytes touch a Vercel function.
+        // Send a sanitized filename (ASCII-safe, no parens/specials) for
+        // anything that might end up in a header or selector; the original
+        // filename is still stored separately for the changelog.
+        step = "fetch /api/upload-url";
+        const safeName = sanitizeFilename(picked.name);
+        console.log("[onDrop] sanitized name:", safeName);
+        const urlRes = await fetch("/api/upload-url", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            filename: safeName,
+            file_type: picked.type,
+          }),
+        });
+        step = "upload-url.json()";
+        const urlData = await readJsonResponse<{
+          path: string;
+          token: string;
+          signed_url: string;
+          public_url: string;
+          error?: string;
+        }>("upload-url", urlRes);
+        if (!urlRes.ok) {
+          throw new Error(urlData.error ?? "Could not mint upload URL");
+        }
+        console.log("[onDrop] got upload URL, path:", urlData.path);
+
+        // Step 2: PUT the bytes directly to Supabase storage, bypassing
+        // Vercel's 4.5MB request-body limit entirely. This is the only
+        // place in the app where the file bytes cross the network.
+        step = "uploadToSignedUrl";
+        const supabase = getBrowserSupabase();
+        const { error: upErr } = await supabase.storage
+          .from(STORAGE_BUCKET)
+          .uploadToSignedUrl(urlData.path as string, urlData.token as string, picked, {
+            contentType: picked.type,
+            upsert: false,
+          });
+        if (upErr) throw new Error(`Upload to storage failed: ${upErr.message}`);
+        console.log("[onDrop] storage upload complete");
+
+        // Step 3: ask the server to extract metadata. It downloads from
+        // storage (server-side, no body limit on that direction) and
+        // calls Opus. The request we send is just a storage reference.
+        step = "fetch /api/extract";
         setStage("extracting");
-        const form = new FormData();
-        form.append("file", picked);
-        const res = await fetch("/api/extract", { method: "POST", body: form });
-        const data = await res.json();
+        const res = await fetch("/api/extract", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            file_path: urlData.path as string,
+            file_type: picked.type,
+            original_filename: picked.name,
+          }),
+        });
+        step = "extract.json()";
+        const data = await readJsonResponse<{
+          extraction?: VisionExtraction;
+          profileId?: string | null;
+          upload?: UploadedFile;
+          error?: string;
+        }>("extract", res);
         if (!res.ok) throw new Error(data.error ?? "Extraction failed");
+
+        if (!data.upload) {
+          throw new Error("Extract response missing upload reference");
+        }
+        if (!data.extraction) {
+          throw new Error("Extract response missing extraction");
+        }
+        step = "setUploaded";
+        setUploaded(data.upload as UploadedFile);
 
         const ext: VisionExtraction = data.extraction;
         setExtraction(ext);
@@ -167,9 +342,32 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           setSideCollectionName(ext.outside_research_reason?.slice(0, 60) ?? "");
         }
 
+        step = "review-ready";
         setStage("review");
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Upload failed");
+        // Same detailed capture as handleSave — the banner text will say
+        // which step and which DOMException constructor threw.
+        console.group("[onDrop] caught error");
+        console.error("step:", step);
+        console.error("error:", e);
+        console.error(
+          "constructor:",
+          (e as { constructor?: { name?: string } })?.constructor?.name,
+        );
+        if (e instanceof Error) {
+          console.error("name:", e.name);
+          console.error("message:", e.message);
+          console.error("stack:", e.stack);
+        }
+        if (e && typeof e === "object" && "code" in e) {
+          console.error("code:", (e as { code: unknown }).code);
+        }
+        console.groupEnd();
+        const detail = e instanceof Error ? e.message : String(e);
+        const kind =
+          (e as { constructor?: { name?: string } })?.constructor?.name ??
+          "Error";
+        setError(`[${kind} @ ${step}] ${detail}`);
         setStage("error");
       }
     },
@@ -189,10 +387,10 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   });
 
   const canSave = useMemo(() => {
-    if (!fields) return false;
+    if (!fields || !uploaded) return false;
     if (saveToSideCollection && !sideCollectionName.trim()) return false;
     return stage === "review";
-  }, [fields, stage, saveToSideCollection, sideCollectionName]);
+  }, [fields, uploaded, stage, saveToSideCollection, sideCollectionName]);
 
   function updateField<K extends keyof EditableFields>(key: K, value: string) {
     setFields((prev) => {
@@ -219,7 +417,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
 
   function resetForNext(keepProvenance: boolean) {
     setFile(null);
-    setFileBase64(null);
+    setUploaded(null);
     setPreview(null);
     setExtraction(null);
     setFields(null);
@@ -236,34 +434,91 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
   }
 
   async function handleSave() {
-    if (!fields || !file || !fileBase64) return;
+    if (!fields || !file || !uploaded) return;
     setStage("saving");
     setError(null);
+
+    // The file is already in Supabase storage (uploaded by /api/extract).
+    // Send only metadata + the storage reference — no file bytes in this
+    // request, so we stay well under Vercel's 4.5MB body limit.
+    const payload = {
+      research_profile_id: profileId,
+      original_filename: uploaded.original_filename,
+      file_path: uploaded.file_path,
+      file_url: uploaded.file_url,
+      file_type: uploaded.file_type,
+      file_size_bytes: uploaded.file_size_bytes,
+      fields,
+      entities: extraction?.entities ?? [],
+      research_note: researchNote,
+      research_note_is_standing: noteIsStanding,
+      provenance,
+      is_outside_research: saveToSideCollection,
+      outside_research_reason: extraction?.outside_research_reason,
+      side_collection_name: saveToSideCollection
+        ? sideCollectionName || "Outside current research"
+        : undefined,
+      edited_fields: Array.from(editedFields),
+      ai_originals: aiOriginals,
+    };
+    console.group("[handleSave] submitting document");
+    console.log("file.name:", file.name);
+    console.log("file.type:", file.type);
+    console.log("file.size:", file.size);
+    console.log("uploaded:", uploaded);
+    console.log("provenance:", provenance);
+    console.log("fields (values only):", {
+      publication_name: fields.publication_name.value,
+      publication_date: fields.publication_date.value,
+      title_subject: fields.title_subject.value,
+      author: fields.author.value,
+      language: fields.language.value,
+      extracted_text_len: fields.extracted_text.value?.length ?? 0,
+    });
+    console.log("entities count:", payload.entities.length);
+    console.log("research_note length:", researchNote.length);
+    console.log("edited_fields:", payload.edited_fields);
+    console.log(
+      "is_outside_research:",
+      payload.is_outside_research,
+      "side_collection_name:",
+      payload.side_collection_name,
+    );
+    console.groupEnd();
+
+    let body: string;
+    try {
+      body = JSON.stringify(payload);
+      console.log("[handleSave] JSON.stringify OK, body length:", body.length);
+    } catch (jsonErr) {
+      console.error("[handleSave] JSON.stringify threw:", jsonErr);
+      setError(
+        `Failed to serialize form data: ${jsonErr instanceof Error ? jsonErr.message : String(jsonErr)}`,
+      );
+      setStage("error");
+      return;
+    }
+
     try {
       const res = await fetch("/api/documents", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          research_profile_id: profileId,
-          original_filename: file.name,
-          file_base64: fileBase64,
-          file_type: file.type,
-          fields,
-          entities: extraction?.entities ?? [],
-          research_note: researchNote,
-          research_note_is_standing: noteIsStanding,
-          provenance,
-          is_outside_research: saveToSideCollection,
-          outside_research_reason: extraction?.outside_research_reason,
-          side_collection_name: saveToSideCollection
-            ? sideCollectionName || "Outside current research"
-            : undefined,
-          edited_fields: Array.from(editedFields),
-          ai_originals: aiOriginals,
-        }),
+        body,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      const data = await readJsonResponse<{
+        error?: string;
+        field?: string;
+        document?: { id: string };
+      }>("documents", res);
+      if (!res.ok) {
+        console.error("[handleSave] server error response:", data);
+        // Server returns { error, field?, issues? } — the error string is
+        // already prefixed with the human-readable field label when known.
+        throw new Error(data.error ?? `Save failed (status ${res.status})`);
+      }
+      if (!data.document) {
+        throw new Error("Server response missing document field");
+      }
       const newId: string = data.document.id;
       setSavedDocId(newId);
 
@@ -275,7 +530,14 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           `/api/documents/${newId}/analyze-connections`,
           { method: "POST" },
         );
-        const aData = await aRes.json();
+        const aData = await readJsonResponse<{
+          analysis?: {
+            connections: Array<{ matched_note_id: string | null }>;
+            matched_notes: unknown[];
+            fits_research_profile: boolean;
+            outside_research_explanation: string | null;
+          };
+        }>("analyze", aRes);
         if (aRes.ok && aData?.analysis) {
           const a = aData.analysis as {
             connections: Array<{ matched_note_id: string | null }>;
@@ -296,7 +558,28 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       }
       setStage("done");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
+      // Detailed error logging — the cryptic "string did not match the
+      // expected pattern" bug was hard to source. Surface every angle.
+      console.group("[handleSave] caught error");
+      console.error("error:", e);
+      console.error(
+        "constructor:",
+        (e as { constructor?: { name?: string } })?.constructor?.name,
+      );
+      if (e instanceof Error) {
+        console.error("name:", e.name);
+        console.error("message:", e.message);
+        console.error("stack:", e.stack);
+      }
+      if (e && typeof e === "object" && "code" in e) {
+        console.error("code:", (e as { code: unknown }).code);
+      }
+      console.groupEnd();
+      const detail = e instanceof Error ? e.message : String(e);
+      const kind =
+        (e as { constructor?: { name?: string } })?.constructor?.name ??
+        "Error";
+      setError(`[${kind}] ${detail}`);
       setStage("error");
     }
   }
@@ -690,6 +973,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         <div className="card" style={{ padding: "20px 24px" }}>
           <span className="section-label">Side collection name</span>
           <input
+            type="text"
             className="input-field mt-3"
             value={sideCollectionName}
             onChange={(e) => setSideCollectionName(e.target.value)}
@@ -791,6 +1075,10 @@ function FieldEditor({
         />
       ) : (
         <input
+          type="text"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
           className={`input-field mt-3 ${mono ? "font-mono" : ""}`}
           style={{ fontSize: mono ? 13 : 14 }}
           value={value}
@@ -870,7 +1158,10 @@ function ProvenanceBlock({
         <div>
           <p className="field-label">Date found</p>
           <input
-            type="date"
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="2026-04-21, April 2026, or 2026"
             className="input-field mt-2 font-mono"
             style={{ fontSize: 13 }}
             value={provenance.discovery_date}
@@ -927,6 +1218,10 @@ function ProvenanceField({
         )}
       </div>
       <input
+        type="text"
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
         className={`input-field mt-2 ${mono ? "font-mono" : ""}`}
         style={{ fontSize: mono ? 13 : 14 }}
         value={value}
@@ -955,15 +1250,3 @@ function Spinner() {
   );
 }
 
-function bufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(
-      null,
-      Array.from(bytes.subarray(i, i + chunk)),
-    );
-  }
-  return btoa(binary);
-}

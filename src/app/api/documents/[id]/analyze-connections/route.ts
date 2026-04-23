@@ -47,9 +47,16 @@ export async function POST(
     // Persist connections.
     const candidateIds = new Set(input.candidates.map((c) => c.id));
     const knownNoteIds = new Set(input.standingNotes.map((n) => n.id));
+    const noteById = new Map(input.standingNotes.map((n) => [n.id, n]));
     const validConnections: RawConnection[] = [];
     for (const c of result.connections) {
-      if (!candidateIds.has(c.target_document_id)) continue;
+      if (!candidateIds.has(c.target_document_id)) {
+        console.log("[analyze-connections] dropping connection — target not in candidates", {
+          target_document_id: c.target_document_id,
+          matched_note_id: c.matched_note_id,
+        });
+        continue;
+      }
       if (c.target_document_id === documentId) continue;
       const matched =
         c.matched_note_id && knownNoteIds.has(c.matched_note_id)
@@ -57,6 +64,43 @@ export async function POST(
           : null;
       validConnections.push({ ...c, matched_note_id: matched });
     }
+
+    // Safety net: if Opus returned a matched_notes entry but didn't emit a
+    // corresponding connection to the note's source document, synthesize
+    // one. Without this, the note match is invisible in the UI (the
+    // "Matched research note" pill is driven by connections[].matched_note_id).
+    const connectedNoteIds = new Set(
+      validConnections.map((c) => c.matched_note_id).filter((v): v is string => !!v),
+    );
+    for (const m of result.matched_notes) {
+      if (connectedNoteIds.has(m.note_id)) continue;
+      const note = noteById.get(m.note_id);
+      if (!note) {
+        console.log("[analyze-connections] skipping matched_note — unknown note id", {
+          note_id: m.note_id,
+        });
+        continue;
+      }
+      if (note.document_id === documentId) continue;
+      console.log("[analyze-connections] synthesizing note-match connection", {
+        note_id: note.id,
+        target_document_id: note.document_id,
+      });
+      validConnections.push({
+        target_document_id: note.document_id,
+        connection_type: "thematic",
+        strength: "medium",
+        description: m.relevance,
+        linked_entities: [],
+        matched_note_id: note.id,
+      });
+    }
+
+    console.log("[analyze-connections] persisting", {
+      document_id: documentId,
+      valid_connection_count: validConnections.length,
+      note_matched_count: validConnections.filter((c) => c.matched_note_id).length,
+    });
 
     let storedConnections = 0;
     if (validConnections.length > 0) {
