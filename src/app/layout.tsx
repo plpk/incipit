@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://incipit.dev"),
   applicationName: "Incipit",
   title: {
-    default: "Incipit, your research archive, finally intelligent.",
+    default: "Incipit: Your research archive, finally intelligent.",
     template: "%s | Incipit",
   },
   description:
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Incipit",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
   },
   openGraph: {
     title: "Incipit",
