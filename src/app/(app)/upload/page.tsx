@@ -42,12 +42,6 @@ export default async function UploadPage() {
           Drop in a scan or photograph. Incipit reads the image and proposes
           metadata for you to confirm.
         </p>
-        <p
-          className="mt-4 font-mono text-[12px] uppercase tracking-[0.08em]"
-          style={{ color: atLimit ? "#c2714f" : "#0d9488" }}
-        >
-          {count} of {limit} documents used
-        </p>
       </header>
 
       {atLimit ? (
