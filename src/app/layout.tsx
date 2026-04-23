@@ -24,9 +24,34 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Incipit — archival research assistant",
+  metadataBase: new URL("https://incipit.dev"),
+  title: {
+    default: "Incipit, your research archive, finally intelligent.",
+    template: "%s | Incipit",
+  },
   description:
-    "AI-powered archival research assistant for historians. Read primary sources, extract metadata, and surface connections.",
+    "AI-powered archival research assistant for historians. Turn messy fieldwork scans into a persistent, searchable, relationship-aware research archive.",
+  openGraph: {
+    title: "Incipit",
+    description: "Your research archive, finally intelligent.",
+    url: "https://incipit.dev",
+    siteName: "Incipit",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Incipit",
+    description: "Your research archive, finally intelligent.",
+  },
+  icons: {
+    icon: [
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
