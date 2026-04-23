@@ -93,23 +93,22 @@ export default function LandingPage() {
               <div className="min-w-0 flex-1">
                 <div className="rounded-xl bg-canvas p-6">
                   <div className="mb-1 font-display text-[15px] font-semibold">
-                    El Tacna-Arica y la actitud continental
+                    El problema indígena y la tierra
                   </div>
                   <div className="mb-4 text-[12px] text-ink-400">
-                    El Nacionalista · Ponce, Puerto Rico · 14 de marzo, 1926
+                    Amauta · Lima, Peru · septiembre 1928
                   </div>
                   <div className="grid grid-cols-2 gap-2.5">
-                    <PreviewMeta label="Publication" value="El Nacionalista" tier="T1" />
-                    <PreviewMeta label="Date" value="1926-03-14" tier="T1" />
+                    <PreviewMeta label="Publication" value="Amauta" verified />
+                    <PreviewMeta label="Date" value="septiembre 1928" verified />
                     <PreviewMeta label="Language" value="Spanish" />
-                    <PreviewMeta label="Author" value="Unknown" tier="T2" />
+                    <PreviewMeta label="Author" value="J.C. Mariátegui" verified />
                   </div>
                   <div className="mt-4 flex flex-wrap gap-1.5">
-                    <EntityChip kind="person">Augusto Leguía</EntityChip>
-                    <EntityChip kind="place">Tacna-Arica</EntityChip>
-                    <EntityChip kind="org">Liga Anti-Imperialista</EntityChip>
-                    <EntityChip kind="person">José Vasconcelos</EntityChip>
-                    <EntityChip kind="place">Bolivia</EntityChip>
+                    <EntityChip kind="person">José Carlos Mariátegui</EntityChip>
+                    <EntityChip kind="place">Peru</EntityChip>
+                    <EntityChip kind="org">indigenismo</EntityChip>
+                    <EntityChip kind="org">tierra</EntityChip>
                   </div>
                 </div>
               </div>
@@ -415,11 +414,11 @@ function PreviewSidebarItem({
 function PreviewMeta({
   label,
   value,
-  tier,
+  verified,
 }: {
   label: string;
   value: string;
-  tier?: "T1" | "T2";
+  verified?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-[3px]">
@@ -428,18 +427,15 @@ function PreviewMeta({
       </span>
       <span className="text-[13px] font-medium">
         {value}{" "}
-        {tier && (
+        {verified && (
           <span
             className="ml-1 inline-block rounded-md px-2.5 py-[2px] text-[11px] font-semibold"
             style={{
-              background:
-                tier === "T1"
-                  ? "rgba(13,148,136,0.1)"
-                  : "rgba(194,113,79,0.1)",
-              color: tier === "T1" ? "#0d9488" : "#c2714f",
+              background: "rgba(13,148,136,0.1)",
+              color: "#0d9488",
             }}
           >
-            {tier}
+            ✓ Verified
           </span>
         )}
       </span>
