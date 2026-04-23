@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "About — Incipit",
+  title: "About",
   description:
     "Built by a historian who spent years in archives across eight countries.",
 };

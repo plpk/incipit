@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 export const metadata = {
-  title: "Early Access — Incipit",
+  title: "Early Access",
   description:
     "You're getting in early. Your archive is real and yours to keep.",
 };
