@@ -8,10 +8,6 @@ The name comes from manuscript studies: an *incipit* is the opening words of a t
 
 **Live at [incipit.dev](https://www.incipit.dev)**
 
-![Incipit — Your research archive, finally intelligent](public/screenshots/landing-hero.png)
-
-![From scan to searchable in five steps](public/screenshots/how-it-works.png)
-
 ---
 
 ## The Problem
@@ -123,5 +119,16 @@ Incipit is demonstrated with real primary source documents from my personal rese
 6. `npm install && npm run dev`
 
 ---
+
+## Screenshots
+
+<p>
+  <img src="public/screenshots/landing-hero.png" alt="Incipit landing page" width="400">
+  <img src="public/screenshots/how-it-works.png" alt="How It Works page" width="400">
+</p>
+<p>
+  <img src="public/screenshots/about.png" alt="About page" width="400">
+  <img src="public/screenshots/signin.png" alt="Sign in page" width="400">
+</p>
 
 *Built for the [Built with Opus 4.7](https://cerebralvalley.ai/e/built-with-4-7-hackathon) hackathon — Cerebral Valley & Anthropic, April 21–26, 2026.*
