@@ -30,53 +30,11 @@ async function loadGoogleFont(
   }
 }
 
-type ChipStyle = {
-  top: number;
-  left: number;
-  rotate: number;
-};
-
-function Chip({
-  text,
-  color,
-  bg,
-  style,
-}: {
-  text: string;
-  color: string;
-  bg: string;
-  style: ChipStyle;
-}) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: style.top,
-        left: style.left,
-        transform: `rotate(${style.rotate}deg)`,
-        display: "flex",
-        backgroundColor: bg,
-        color,
-        padding: "10px 18px",
-        borderRadius: 10,
-        fontSize: 22,
-        fontFamily: "Jakarta",
-        fontWeight: 500,
-        letterSpacing: -0.2,
-        boxShadow: "0 6px 20px rgba(15, 23, 42, 0.06)",
-        border: "1px solid rgba(15, 23, 42, 0.04)",
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
 export async function renderOgImage() {
-  const [sora800, jakarta400, jakarta500] = await Promise.all([
+  const [sora800, jakarta400, jakarta600] = await Promise.all([
     loadGoogleFont("Sora", 800),
     loadGoogleFont("Plus Jakarta Sans", 400),
-    loadGoogleFont("Plus Jakarta Sans", 500),
+    loadGoogleFont("Plus Jakarta Sans", 600),
   ]);
 
   const fonts = [
@@ -92,16 +50,16 @@ export async function renderOgImage() {
       weight: 400 as const,
       style: "normal" as const,
     },
-    jakarta500 && {
+    jakarta600 && {
       name: "Jakarta",
-      data: jakarta500,
-      weight: 500 as const,
+      data: jakarta600,
+      weight: 600 as const,
       style: "normal" as const,
     },
   ].filter(Boolean) as Array<{
     name: string;
     data: ArrayBuffer;
-    weight: 400 | 500 | 800;
+    weight: 400 | 600 | 800;
     style: "normal";
   }>;
 
@@ -113,116 +71,80 @@ export async function renderOgImage() {
           height: "100%",
           display: "flex",
           flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
           backgroundColor: "#f7f7f5",
           fontFamily: "Jakarta, sans-serif",
+          padding: "60px",
         }}
       >
         <div
           style={{
-            flex: 1,
             display: "flex",
-            padding: "60px",
+            fontFamily: "Jakarta, sans-serif",
+            fontWeight: 600,
+            fontSize: 30,
+            color: "#71717a",
+            letterSpacing: -0.2,
+          }}
+        >
+          Incipit
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            marginTop: 24,
           }}
         >
           <div
             style={{
-              flex: 3,
               display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
+              fontFamily: "Sora, sans-serif",
+              fontWeight: 800,
+              fontSize: 64,
+              color: "#1a1a2e",
+              letterSpacing: -2.56,
+              lineHeight: 1.05,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                fontFamily: "Sora, sans-serif",
-                fontWeight: 800,
-                fontSize: 112,
-                color: "#1a1a2e",
-                letterSpacing: -4.5,
-                lineHeight: 1,
-              }}
-            >
-              Incipit
-            </div>
-            <div
-              style={{
-                display: "flex",
-                marginTop: 28,
-                fontSize: 30,
-                color: "#52525b",
-                fontWeight: 400,
-                lineHeight: 1.3,
-                maxWidth: 560,
-              }}
-            >
-              Your research archive, finally intelligent.
-            </div>
-            <div
-              style={{
-                marginTop: 36,
-                width: 220,
-                height: 3,
-                backgroundImage:
-                  "linear-gradient(to right, #0d9488, #06b6d4)",
-                borderRadius: 2,
-              }}
-            />
+            Your research archive,
           </div>
-
           <div
             style={{
-              flex: 2,
-              position: "relative",
               display: "flex",
+              fontFamily: "Sora, sans-serif",
+              fontWeight: 800,
+              fontSize: 64,
+              letterSpacing: -2.56,
+              lineHeight: 1.05,
+              backgroundImage: "linear-gradient(135deg, #0d9488, #06b6d4)",
+              backgroundClip: "text",
+              color: "transparent",
             }}
           >
-            <Chip
-              text="Augusto Leguia"
-              color="#c2410c"
-              bg="#fff7ed"
-              style={{ top: 40, left: 30, rotate: -3 }}
-            />
-            <Chip
-              text="Lima, Peru"
-              color="#334155"
-              bg="#f1f5f9"
-              style={{ top: 150, left: 150, rotate: 2 }}
-            />
-            <Chip
-              text="Liga Anti-Imperialista"
-              color="#92400e"
-              bg="#fffbeb"
-              style={{ top: 250, left: 30, rotate: -2 }}
-            />
-            <Chip
-              text="T1 Verified"
-              color="#059669"
-              bg="#ecfdf5"
-              style={{ top: 380, left: 170, rotate: 1 }}
-            />
+            finally intelligent.
           </div>
         </div>
 
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            padding: "0 60px",
-            height: 80,
-            borderTop: "1px solid rgba(0, 0, 0, 0.06)",
+            marginTop: 20,
+            maxWidth: 700,
+            fontFamily: "Jakarta, sans-serif",
+            fontWeight: 400,
+            fontSize: 20,
+            lineHeight: 1.5,
+            color: "#52525b",
+            textAlign: "center",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              fontSize: 22,
-              color: "#71717a",
-              fontWeight: 500,
-            }}
-          >
-            incipit.dev
-          </div>
+          Incipit turns fieldwork scans into a persistent, searchable,
+          relationship-aware research archive. Shaped by your intuition.
+          Verified by your expertise.
         </div>
       </div>
     ),
