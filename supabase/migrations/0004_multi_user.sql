@@ -27,10 +27,10 @@ truncate table
     research_profiles
 restart identity cascade;
 
--- Clear uploaded files from the documents bucket. (Row-level only — the
--- underlying object storage is separate and should be cleared via the
--- Supabase dashboard or the storage API.)
-delete from storage.objects where bucket_id = 'documents';
+-- Note: the `documents` storage bucket must be cleared separately via the
+-- Storage API. Supabase blocks `delete from storage.objects` at the DB
+-- layer to prevent orphaned files — run scripts/clear-documents-bucket.mjs
+-- (or use the dashboard) before this migration.
 
 -- =====================================================================
 -- 1. profiles
@@ -295,36 +295,7 @@ create policy connections_delete_own on connections
     for delete using (user_id = auth.uid());
 
 -- =====================================================================
--- 4. Storage policies for the documents bucket
---    File paths must be prefixed with the owner's uuid so each user can
---    only read / write their own uploads.
--- =====================================================================
-alter table storage.objects enable row level security;
-
-drop policy if exists documents_bucket_select_own on storage.objects;
-create policy documents_bucket_select_own on storage.objects
-    for select using (
-        bucket_id = 'documents'
-        and (storage.foldername(name))[1] = auth.uid()::text
-    );
-
-drop policy if exists documents_bucket_insert_own on storage.objects;
-create policy documents_bucket_insert_own on storage.objects
-    for insert with check (
-        bucket_id = 'documents'
-        and (storage.foldername(name))[1] = auth.uid()::text
-    );
-
-drop policy if exists documents_bucket_update_own on storage.objects;
-create policy documents_bucket_update_own on storage.objects
-    for update using (
-        bucket_id = 'documents'
-        and (storage.foldername(name))[1] = auth.uid()::text
-    );
-
-drop policy if exists documents_bucket_delete_own on storage.objects;
-create policy documents_bucket_delete_own on storage.objects
-    for delete using (
-        bucket_id = 'documents'
-        and (storage.foldername(name))[1] = auth.uid()::text
-    );
+-- 4. Storage policies for the `documents` bucket live in a companion
+--    migration: 0005_documents_bucket_policies.sql. Supabase restricts
+--    `alter table storage.objects` to the storage_admin role, so the
+--    storage-side work is isolated to keep this file re-runnable.
