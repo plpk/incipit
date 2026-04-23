@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { extractFromImage, type MediaInput } from "@/lib/vision-extraction";
-import { getCurrentProfile } from "@/lib/queries";
+import { getResearchProfileForUser } from "@/lib/queries";
+import { getAuthUser } from "@/lib/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { assertServerEnv, env } from "@/lib/env";
 
@@ -37,6 +38,11 @@ export async function POST(req: Request) {
   try {
     assertServerEnv();
 
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -56,6 +62,16 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: `Unsupported file type: ${body.file_type}` },
         { status: 400 },
+      );
+    }
+
+    // Defense-in-depth: storage policies already gate reads by the first
+    // path segment, but enforce it here too so a client that cooks a
+    // different user's path can't trigger a download + Opus call.
+    if (!body.file_path.startsWith(`${user.id}/`)) {
+      return NextResponse.json(
+        { error: "Forbidden: file path does not belong to the signed-in user" },
+        { status: 403 },
       );
     }
 
@@ -87,7 +103,7 @@ export async function POST(req: Request) {
       .from(env.supabaseBucket)
       .getPublicUrl(body.file_path);
 
-    const profile = await getCurrentProfile();
+    const profile = await getResearchProfileForUser(user.id);
     console.log("[extract] calling Opus vision", { at: elapsed() });
     const extraction = await extractFromImage({ mediaType, base64 }, profile);
     console.log("[extract] Opus returned", {

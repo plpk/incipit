@@ -1,13 +1,19 @@
 import Link from "next/link";
-import { listDocuments } from "@/lib/queries";
+import { redirect } from "next/navigation";
+import { getAuthUser } from "@/lib/auth";
+import { listDocumentsForUser } from "@/lib/queries";
 import { TrustTierBadge } from "@/components/ConfidenceBadge";
 import { PageShell } from "@/components/PageShell";
 import { DeleteAllButton } from "./DeleteAllButton";
+import type { DocumentRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function ArchivePage() {
-  const docs = await listDocuments(200);
+  const user = await getAuthUser();
+  if (!user) redirect("/signin");
+
+  const docs = await listDocumentsForUser(user.id, 200);
   const primary = docs.filter((d) => !d.is_outside_research);
   const sidelined = docs.filter((d) => d.is_outside_research);
 
@@ -50,7 +56,7 @@ function DocSection({
   docs,
 }: {
   title: string;
-  docs: Awaited<ReturnType<typeof listDocuments>>;
+  docs: DocumentRow[];
 }) {
   if (docs.length === 0) {
     return (

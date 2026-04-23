@@ -113,24 +113,26 @@ Respond ONLY with valid JSON, no markdown, no preamble:
 export async function buildAnalysisInput(
   supabase: SupabaseClient,
   documentId: string,
+  userId: string,
 ): Promise<AnalysisInput | null> {
   const { data: docData, error: docErr } = await supabase
     .from("documents")
     .select("*")
     .eq("id", documentId)
+    .eq("user_id", userId)
     .maybeSingle();
   if (docErr) throw docErr;
   if (!docData) return null;
   const doc = docData as DocumentRow;
 
-  const docEntities = await fetchEntitiesFor(supabase, documentId);
-  const docResearchNote = await fetchNoteForDocument(supabase, documentId);
-  const profile = await fetchProfile(supabase, doc.research_profile_id);
+  const docEntities = await fetchEntitiesFor(supabase, documentId, userId);
+  const docResearchNote = await fetchNoteForDocument(supabase, documentId, userId);
+  const profile = await fetchProfile(supabase, doc.research_profile_id, userId);
 
   // Fetch standing notes first so we can force-include their source docs as
   // candidates — otherwise a hunch whose source doc shares no entity or date
   // with the new upload would be invisible to Opus.
-  const standingNotes = await fetchStandingNotes(supabase, documentId);
+  const standingNotes = await fetchStandingNotes(supabase, documentId, userId);
   const forcedCandidateIds = Array.from(
     new Set(standingNotes.map((n) => n.document_id)),
   );
@@ -138,6 +140,7 @@ export async function buildAnalysisInput(
     supabase,
     doc,
     docEntities,
+    userId,
     forcedCandidateIds,
   );
 
@@ -165,19 +168,21 @@ export async function buildAnalysisInput(
 async function fetchProfile(
   supabase: SupabaseClient,
   profileId: string | null,
+  userId: string,
 ): Promise<ResearchProfile | null> {
-  // Prefer the doc's linked profile; fall back to the most recent.
   if (profileId) {
     const { data } = await supabase
       .from("research_profiles")
       .select("*")
       .eq("id", profileId)
+      .eq("user_id", userId)
       .maybeSingle();
     if (data) return data as ResearchProfile;
   }
   const { data } = await supabase
     .from("research_profiles")
     .select("*")
+    .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -187,10 +192,12 @@ async function fetchProfile(
 async function fetchEntitiesFor(
   supabase: SupabaseClient,
   documentId: string,
+  userId: string,
 ): Promise<AnalysisEntity[]> {
   const { data, error } = await supabase
     .from("document_entities")
     .select("entities(id, name, entity_type)")
+    .eq("user_id", userId)
     .eq("document_id", documentId);
   if (error || !data) return [];
   const out: AnalysisEntity[] = [];
@@ -211,10 +218,12 @@ async function fetchEntitiesFor(
 async function fetchNoteForDocument(
   supabase: SupabaseClient,
   documentId: string,
+  userId: string,
 ): Promise<string | null> {
   const { data } = await supabase
     .from("research_notes")
     .select("note_text")
+    .eq("user_id", userId)
     .eq("document_id", documentId)
     .order("created_at", { ascending: true })
     .limit(1)
@@ -226,6 +235,7 @@ async function fetchCandidates(
   supabase: SupabaseClient,
   doc: DocumentRow,
   docEntities: AnalysisEntity[],
+  userId: string,
   forcedIds: string[] = [],
 ): Promise<Candidate[]> {
   const sharedByEntity: Map<string, number> = new Map();
@@ -234,6 +244,7 @@ async function fetchCandidates(
     const { data: sharedRows } = await supabase
       .from("document_entities")
       .select("document_id, entity_id")
+      .eq("user_id", userId)
       .in("entity_id", entityIds)
       .neq("document_id", doc.id);
     for (const row of sharedRows ?? []) {
@@ -245,11 +256,10 @@ async function fetchCandidates(
   const sourceYear = extractYear(doc.publication_date);
   const dateMatches: Map<string, number> = new Map();
   if (sourceYear !== null) {
-    // publication_date is free-form text; pull all docs with a parseable
-    // year and filter in JS. Fine at hackathon scale.
     const { data: allDocs } = await supabase
       .from("documents")
       .select("id, publication_date")
+      .eq("user_id", userId)
       .neq("id", doc.id);
     for (const row of allDocs ?? []) {
       const r = row as { id: string; publication_date: string | null };
@@ -301,6 +311,7 @@ async function fetchCandidates(
     .select(
       "id, title_subject, publication_name, publication_date, language, extracted_text, original_filename",
     )
+    .eq("user_id", userId)
     .in("id", ids);
   const byId = new Map<string, Record<string, unknown>>();
   for (const row of docs ?? []) {
@@ -311,6 +322,7 @@ async function fetchCandidates(
   const { data: entRows } = await supabase
     .from("document_entities")
     .select("document_id, entities(id, name, entity_type)")
+    .eq("user_id", userId)
     .in("document_id", ids);
   const entsById = new Map<string, AnalysisEntity[]>();
   for (const row of entRows ?? []) {
@@ -357,12 +369,14 @@ async function fetchCandidates(
 async function fetchStandingNotes(
   supabase: SupabaseClient,
   excludeDocId: string,
+  userId: string,
 ): Promise<StandingNote[]> {
   const { data, error } = await supabase
     .from("research_notes")
     .select(
       "id, note_text, document_id, documents:document_id(id, title_subject, publication_name, original_filename)",
     )
+    .eq("user_id", userId)
     .eq("is_standing_query", true);
   if (error) {
     console.error("[connection-analysis] fetchStandingNotes query error", error);

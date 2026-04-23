@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { assertServerEnv } from "@/lib/env";
 import {
@@ -17,18 +18,24 @@ export async function POST(
 ) {
   try {
     assertServerEnv();
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const supabase = getServerSupabase();
     const documentId = params.id;
 
-    const input = await buildAnalysisInput(supabase, documentId);
+    const input = await buildAnalysisInput(supabase, documentId, user.id);
     if (!input) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
 
-    // First upload? Nothing to compare against — no-op.
+    // First upload for this user? Nothing to compare against — no-op.
     const { count: otherDocs } = await supabase
       .from("documents")
       .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
       .neq("id", documentId);
     if (!otherDocs || otherDocs === 0) {
       return NextResponse.json({
@@ -44,7 +51,6 @@ export async function POST(
 
     const result = await runAnalysis(input);
 
-    // Persist connections.
     const candidateIds = new Set(input.candidates.map((c) => c.id));
     const knownNoteIds = new Set(input.standingNotes.map((n) => n.id));
     const noteById = new Map(input.standingNotes.map((n) => [n.id, n]));
@@ -65,27 +71,14 @@ export async function POST(
       validConnections.push({ ...c, matched_note_id: matched });
     }
 
-    // Safety net: if Opus returned a matched_notes entry but didn't emit a
-    // corresponding connection to the note's source document, synthesize
-    // one. Without this, the note match is invisible in the UI (the
-    // "Matched research note" pill is driven by connections[].matched_note_id).
     const connectedNoteIds = new Set(
       validConnections.map((c) => c.matched_note_id).filter((v): v is string => !!v),
     );
     for (const m of result.matched_notes) {
       if (connectedNoteIds.has(m.note_id)) continue;
       const note = noteById.get(m.note_id);
-      if (!note) {
-        console.log("[analyze-connections] skipping matched_note — unknown note id", {
-          note_id: m.note_id,
-        });
-        continue;
-      }
+      if (!note) continue;
       if (note.document_id === documentId) continue;
-      console.log("[analyze-connections] synthesizing note-match connection", {
-        note_id: note.id,
-        target_document_id: note.document_id,
-      });
       validConnections.push({
         target_document_id: note.document_id,
         connection_type: "thematic",
@@ -97,6 +90,7 @@ export async function POST(
     }
 
     console.log("[analyze-connections] persisting", {
+      user_id: user.id,
       document_id: documentId,
       valid_connection_count: validConnections.length,
       note_matched_count: validConnections.filter((c) => c.matched_note_id).length,
@@ -105,6 +99,7 @@ export async function POST(
     let storedConnections = 0;
     if (validConnections.length > 0) {
       const rows = validConnections.map((c) => ({
+        user_id: user.id,
         source_document_id: documentId,
         target_document_id: c.target_document_id,
         connection_type: c.connection_type,
@@ -129,8 +124,6 @@ export async function POST(
       }
     }
 
-    // Persist outside-research flag if Opus flagged it AND the historian
-    // didn't already tag it outside themselves.
     let outsideResearchUpdated = false;
     if (
       !result.fits_research_profile &&
@@ -145,7 +138,8 @@ export async function POST(
           side_collection_name:
             input.doc.side_collection_name ?? "Outside current research",
         })
-        .eq("id", documentId);
+        .eq("id", documentId)
+        .eq("user_id", user.id);
       if (updErr) console.error("[analyze-connections] outside update failed", updErr);
       else outsideResearchUpdated = true;
     }

@@ -22,10 +22,20 @@ export function MobileHeader() {
           Incipit
         </span>
       </Link>
-      <nav className="flex gap-4 text-[13px] font-medium text-ink-500">
+      <nav className="flex items-center gap-4 text-[13px] font-medium text-ink-500">
         <Link href="/upload" className="hover:text-ink-900">Upload</Link>
         <Link href="/archive" className="hover:text-ink-900">Archive</Link>
         <Link href="/search" className="hover:text-ink-900">Search</Link>
+        <form method="post" action="/auth/signout" className="flex">
+          <button
+            type="submit"
+            className="text-ink-400 transition hover:text-ink-900"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            Sign out
+          </button>
+        </form>
       </nav>
     </header>
   );

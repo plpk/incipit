@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { assertServerEnv } from "@/lib/env";
 
@@ -8,6 +9,11 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   try {
     assertServerEnv();
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const url = new URL(req.url);
     const q = url.searchParams.get("q")?.trim() ?? "";
     if (!q) return NextResponse.json({ results: [] });
@@ -18,6 +24,7 @@ export async function GET(req: Request) {
     const { data, error } = await supabase
       .from("documents")
       .select("*")
+      .eq("user_id", user.id)
       .or(
         [
           `extracted_text.ilike.${pattern}`,

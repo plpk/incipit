@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
-  getDocument,
-  getDocumentEntities,
-  getDocumentConnections,
+  getDocumentForUser,
+  getDocumentEntitiesForUser,
+  getDocumentConnectionsForUser,
 } from "@/lib/queries";
+import { getAuthUser } from "@/lib/auth";
 import { chicagoCitation } from "@/lib/citation";
 import { TrustTierBadge } from "@/components/ConfidenceBadge";
 import { PageShell } from "@/components/PageShell";
@@ -19,12 +20,15 @@ export default async function DocumentPage({
 }: {
   params: { id: string };
 }) {
-  const doc = await getDocument(params.id);
+  const user = await getAuthUser();
+  if (!user) redirect("/signin");
+
+  const doc = await getDocumentForUser(user.id, params.id);
   if (!doc) notFound();
 
   const [entities, connections] = await Promise.all([
-    getDocumentEntities(params.id),
-    getDocumentConnections(params.id),
+    getDocumentEntitiesForUser(user.id, params.id),
+    getDocumentConnectionsForUser(user.id, params.id),
   ]);
 
   const citation = chicagoCitation(doc);

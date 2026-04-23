@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getAuthUser } from "@/lib/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { assertServerEnv, env } from "@/lib/env";
 import { generateFilename } from "@/lib/filename";
@@ -86,11 +87,16 @@ const FIELD_LABELS: Record<string, string> = {
 export async function POST(req: Request) {
   try {
     assertServerEnv();
+
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const json = await req.json();
-    // Log shape (not file_base64 contents — they're huge) so prod logs can
-    // be correlated with client console output when chasing weird errors.
     const jsonForLog = json as Record<string, unknown>;
     console.log("[documents.POST] received", {
+      user_id: user.id,
       original_filename: jsonForLog?.original_filename,
       file_type: jsonForLog?.file_type,
       file_path: jsonForLog?.file_path,
@@ -122,13 +128,54 @@ export async function POST(req: Request) {
     const body = parsed.data;
     const supabase = getServerSupabase();
 
-    // File was already uploaded by /api/extract — reuse the storage
-    // reference passed through by the client.
+    // Defense-in-depth: the submitted file_path must belong to this user.
+    if (!body.file_path.startsWith(`${user.id}/`)) {
+      return NextResponse.json(
+        { error: "Forbidden: file_path does not belong to the signed-in user" },
+        { status: 403 },
+      );
+    }
+
+    // If a research_profile_id is given, make sure it belongs to this user —
+    // can't cross-link to someone else's profile.
+    if (body.research_profile_id) {
+      const { data: profile, error: rpErr } = await supabase
+        .from("research_profiles")
+        .select("id")
+        .eq("id", body.research_profile_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (rpErr) throw rpErr;
+      if (!profile) {
+        return NextResponse.json(
+          { error: "Forbidden: research profile does not belong to you" },
+          { status: 403 },
+        );
+      }
+    }
+
+    // Enforce document cap.
+    const { data: userProfile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("document_count, document_limit")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileErr) throw profileErr;
+    const currentCount = userProfile?.document_count ?? 0;
+    const limit = userProfile?.document_limit ?? 5;
+    if (currentCount >= limit) {
+      return NextResponse.json(
+        {
+          error: `You've reached your early access limit of ${limit} documents. We'll expand this as Incipit grows.`,
+          code: "DOCUMENT_LIMIT_REACHED",
+        },
+        { status: 403 },
+      );
+    }
+
     const storagePath = body.file_path;
     const fileUrl = body.file_url;
 
-    // Build confidence map. Anything the historian edited becomes T1-ish
-    // per field; the doc-level trust tier is T1 if they looked at every field.
     const confidenceScores: Record<string, ConfidenceLevel> = {
       publication_name: body.fields.publication_name.confidence,
       publication_date: body.fields.publication_date.confidence,
@@ -138,8 +185,6 @@ export async function POST(req: Request) {
       extracted_text: body.fields.extracted_text.confidence,
     };
 
-    // If the historian confirmed without edits we still promote to T1 — they
-    // explicitly accepted the AI output. Edited fields are obviously T1.
     const trustTier = "T1";
 
     const extractedFilename = generateFilename({
@@ -154,6 +199,7 @@ export async function POST(req: Request) {
     const { data: doc, error: insertError } = await supabase
       .from("documents")
       .insert({
+        user_id: user.id,
         research_profile_id: body.research_profile_id ?? null,
         original_filename: body.original_filename,
         generated_filename: extractedFilename,
@@ -186,8 +232,9 @@ export async function POST(req: Request) {
       .single();
     if (insertError) throw insertError;
 
-    // 4. Changelog: record AI→historian transitions and the initial rename.
+    // 4. Changelog.
     const changelog: Array<{
+      user_id: string;
       document_id: string;
       field_changed: string;
       old_value: string | null;
@@ -197,6 +244,7 @@ export async function POST(req: Request) {
 
     for (const field of body.edited_fields) {
       changelog.push({
+        user_id: user.id,
         document_id: doc.id,
         field_changed: field,
         old_value: body.ai_originals[field] ?? null,
@@ -209,6 +257,7 @@ export async function POST(req: Request) {
 
     if (extractedFilename !== body.original_filename) {
       changelog.push({
+        user_id: user.id,
         document_id: doc.id,
         field_changed: "filename",
         old_value: body.original_filename,
@@ -224,14 +273,15 @@ export async function POST(req: Request) {
       if (clError) throw clError;
     }
 
-    // 5. Entities + junction.
+    // 5. Entities + junction. Entities are per-user now — uniqueness index
+    // is (user_id, name, entity_type), matching the migration.
     if (body.entities.length > 0) {
       for (const ent of body.entities) {
         const { data: entRow, error: entErr } = await supabase
           .from("entities")
           .upsert(
-            { name: ent.name, entity_type: ent.entity_type },
-            { onConflict: "name,entity_type" },
+            { user_id: user.id, name: ent.name, entity_type: ent.entity_type },
+            { onConflict: "user_id,name,entity_type" },
           )
           .select()
           .single();
@@ -240,6 +290,7 @@ export async function POST(req: Request) {
           .from("document_entities")
           .upsert(
             {
+              user_id: user.id,
               document_id: doc.id,
               entity_id: entRow.id,
               confidence: ent.confidence,
@@ -254,6 +305,7 @@ export async function POST(req: Request) {
     // 6. Research note.
     if (body.research_note && body.research_note.trim()) {
       const { error: noteErr } = await supabase.from("research_notes").insert({
+        user_id: user.id,
         document_id: doc.id,
         research_profile_id: body.research_profile_id ?? null,
         note_text: body.research_note.trim(),
@@ -262,12 +314,19 @@ export async function POST(req: Request) {
       if (noteErr) throw noteErr;
     }
 
+    // 7. Increment the user's document counter.
+    const { error: counterErr } = await supabase
+      .from("profiles")
+      .update({ document_count: currentCount + 1 })
+      .eq("id", user.id);
+    if (counterErr) {
+      console.error("[documents.POST] counter increment failed", counterErr);
+      // Don't fail the whole request — the doc is saved. Log and continue.
+    }
+
     return NextResponse.json({ document: doc });
   } catch (err) {
     const raw = err instanceof Error ? err.message : "Unknown error";
-    // Postgres errors from PostgREST surface as strings like
-    //   'invalid input syntax for type date: "April 2026"'
-    // Pull out the column if we can so the client can highlight the field.
     let field: string | undefined;
     const dateMatch = raw.match(/type date: "([^"]*)"/);
     if (dateMatch) field = "provenance.discovery_date";
@@ -280,26 +339,28 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE() {
-  // Dev/testing convenience: wipe the entire archive — docs, entities,
-  // connections, research notes, and every stored file. Research profile
-  // is NOT touched here; use the profile endpoint for that.
+  // Wipes the caller's archive — docs, entities, connections, notes, and
+  // their stored files. Only the signed-in user's data; never cross-user.
   try {
     assertServerEnv();
+
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const supabase = getServerSupabase();
 
-    // Page through storage paths so we can remove the blobs. Supabase's
-    // `.in("file_path", ...)` has no batch limit in practice here because
-    // we do the delete by a truthy filter; fetching ids for remove() is fine.
     const { data: docs, error: listErr } = await supabase
       .from("documents")
-      .select("file_path");
+      .select("file_path")
+      .eq("user_id", user.id);
     if (listErr) throw listErr;
 
     const paths = (docs ?? [])
       .map((d) => d.file_path as string | null)
       .filter((p): p is string => !!p);
     if (paths.length > 0) {
-      // supabase-js storage.remove handles batches; chunk defensively.
       const CHUNK = 100;
       for (let i = 0; i < paths.length; i += CHUNK) {
         const slice = paths.slice(i, i + CHUNK);
@@ -308,37 +369,37 @@ export async function DELETE() {
           .remove(slice);
         if (rmErr) {
           console.error("[documents.deleteAll] storage remove failed", rmErr);
-          // keep going — we still want the DB wipe to succeed
         }
       }
     }
 
-    // Delete documents first — cascades handle document_changelog,
-    // document_entities (the junction), and connections.
-    // Using neq on a sentinel uuid lets us "delete all" via the REST API
-    // without needing a raw SQL truncate.
-    const SENTINEL = "00000000-0000-0000-0000-000000000000";
+    // Delete documents — cascades hit changelog, document_entities, connections.
     const { error: docErr } = await supabase
       .from("documents")
       .delete()
-      .neq("id", SENTINEL);
+      .eq("user_id", user.id);
     if (docErr) throw docErr;
 
-    // Entities are not cascaded by documents delete — only the junction is.
-    // Wipe them so the archive is truly empty.
     const { error: entErr } = await supabase
       .from("entities")
       .delete()
-      .neq("id", SENTINEL);
+      .eq("user_id", user.id);
     if (entErr) throw entErr;
 
-    // Research notes link to documents via SET NULL, so they survive a doc
-    // wipe. For a true archive reset we remove them too.
     const { error: noteErr } = await supabase
       .from("research_notes")
       .delete()
-      .neq("id", SENTINEL);
+      .eq("user_id", user.id);
     if (noteErr) throw noteErr;
+
+    // Reset the counter.
+    const { error: counterErr } = await supabase
+      .from("profiles")
+      .update({ document_count: 0 })
+      .eq("id", user.id);
+    if (counterErr) {
+      console.error("[documents.deleteAll] counter reset failed", counterErr);
+    }
 
     return NextResponse.json({ ok: true, removed_files: paths.length });
   } catch (err) {
@@ -347,4 +408,3 @@ export async function DELETE() {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
