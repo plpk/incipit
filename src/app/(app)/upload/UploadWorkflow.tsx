@@ -557,6 +557,9 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         console.error("analyze-connections failed", aErr);
       }
       setStage("done");
+      // Re-render the server layout so the sidebar's usage gauge picks up
+      // the incremented document_count without requiring a page refresh.
+      router.refresh();
     } catch (e) {
       // Detailed error logging — the cryptic "string did not match the
       // expected pattern" bug was hard to source. Surface every angle.
