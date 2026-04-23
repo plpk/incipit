@@ -8,6 +8,10 @@ The name comes from manuscript studies: an *incipit* is the opening words of a t
 
 **Live at [incipit.dev](https://www.incipit.dev)**
 
+![Incipit — Your research archive, finally intelligent](public/screenshots/landing-hero.png)
+
+![From scan to searchable in five steps](public/screenshots/how-it-works.png)
+
 ---
 
 ## The Problem
@@ -29,10 +33,6 @@ Tell Incipit what your research is about in plain language. It asks clarifying q
 ### Document Ingestion with Opus 4.7
 
 Upload a scan. Opus 4.7 reads the actual image — not a broken OCR text layer — and extracts structured metadata: publication name, date, title, author, entities, language, full text. Each field gets a confidence score. Degraded 1920s microfiche in Spanish? Multi-column layouts with period typography? Handwritten marginalia? Opus 4.7 reads what OCR cannot.
-
-### Batch Processing with Claude Managed Agents
-
-Drop up to 20 documents at once. A Claude Managed Agent processes the entire batch autonomously — reading each scan, extracting metadata, cross-referencing documents against each other and against your existing archive, and surfacing connections across the batch. The agent runs in Anthropic's cloud, handling its own context and error recovery across the full set. Document 15 can reference something from document 3. A batch becomes a research session, not just a queue.
 
 ### Historian Confirmation & Trust Tiers
 
@@ -75,7 +75,6 @@ Incipit doesn't just use Opus 4.7 as a build tool — it runs on Opus 4.7 as the
 - **Connection surfacing** finds substantive historical relationships across documents, informed by the researcher's own goals and intuition
 - **Standing query matching** compares new uploads against the historian's recorded hunches
 - **Research context interpretation** shapes every extraction and analysis around what the historian is actually studying
-- **Batch processing** via Managed Agents orchestrates multi-document sessions with cross-document awareness
 
 All code was directed through Claude Code with Opus 4.7.
 
@@ -86,7 +85,6 @@ Claude can read a single document. Incipit builds a research brain that compound
 What a chat window cannot do:
 
 - Maintain a persistent, growing archive where every new document is checked against all previous ones
-- Process 20 documents as a batch with cross-document intelligence via Managed Agents
 - Store research notes as standing queries that activate against future uploads
 - Track confidence scores and verification status across fields
 - Preserve provenance and metadata changelogs
@@ -113,7 +111,6 @@ Incipit is demonstrated with real primary source documents from my personal rese
 - **Next.js 14** App Router
 - **Supabase** — Postgres, Row Level Security, file storage, Google & Apple OAuth
 - **Claude API with Opus 4.7** — Vision extraction, entity analysis, connection surfacing, research context interpretation
-- **Claude Managed Agents** — Batch document processing with cross-document awareness
 - **Vercel** — Production deployment at [incipit.dev](https://www.incipit.dev)
 
 ## Getting Started
@@ -124,10 +121,6 @@ Incipit is demonstrated with real primary source documents from my personal rese
 4. Get an Anthropic API key with Opus 4.7 access
 5. Copy `.env.local.example` to `.env.local` and fill in your keys
 6. `npm install && npm run dev`
-
-## License
-
-MIT
 
 ---
 
