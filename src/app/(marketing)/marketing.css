@@ -1,0 +1,255 @@
+/* Marketing-layer styles. Scoped to pages under (marketing) + /signin + /welcome.
+   Colors and radii mirror the locked design system (Deep Ocean palette). */
+
+/* Hide global ambient washes under marketing pages — they define their own. */
+body.marketing-page::before,
+body.marketing-page::after { display: none !important; }
+
+/* ————————————— Generic page-header ambient backdrop ————————————— */
+.mkt-header-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 50% at 20% 0%, rgba(13,148,136,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 80% 10%, rgba(6,182,212,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+.mkt-header-bg-center {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(13,148,136,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(6,182,212,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ————————————— Auth pages (signin / welcome) ————————————— */
+.auth-ambient {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 20%, rgba(13,148,136,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 75% 70%, rgba(6,182,212,0.05) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 50% 50%, rgba(13,148,136,0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ————————————— Scroll-reveal (non-JS fallback for sections that
+     use the <Reveal> wrapper; kept here so the CSS reveal transition
+     matches any server-rendered markup). ————————————— */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease, transform 0.7s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes fade-up-mkt {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.mkt-fade-up {
+  animation: fade-up-mkt 0.8s ease both;
+}
+
+/* Staggered delays for hero copy */
+.mkt-delay-1 { animation-delay: 0.1s; }
+.mkt-delay-2 { animation-delay: 0.2s; }
+.mkt-delay-3 { animation-delay: 0.3s; }
+.mkt-delay-4 { animation-delay: 0.4s; }
+
+/* ————————————— Badge dot pulse ————————————— */
+@keyframes mkt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.mkt-pulse-dot { animation: mkt-pulse 2s ease infinite; }
+
+/* ————————————— Gradient text ————————————— */
+.mkt-gradient-text {
+  background: linear-gradient(135deg, #0d9488, #06b6d4);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ————————————— Preview window (hero app mock) ————————————— */
+.mkt-preview-window {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow:
+    0 1px 3px rgba(0,0,0,0.04),
+    0 8px 40px rgba(0,0,0,0.06),
+    0 30px 80px rgba(0,0,0,0.04);
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.06);
+}
+.mkt-preview-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 20px;
+  background: #fafaf9;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+.mkt-preview-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+/* ————————————— Problem / feature card hover ————————————— */
+.mkt-card-hover {
+  transition: transform 0.2s;
+}
+.mkt-card-hover:hover { transform: translateY(-2px); }
+
+/* ————————————— Pullquote (about) ————————————— */
+.mkt-pullquote {
+  border-left: 3px solid #0d9488;
+  padding: 4px 0 4px 28px;
+  margin: 40px 0;
+  position: relative;
+}
+.mkt-pullquote::before {
+  content: '';
+  position: absolute;
+  left: -1px; top: 0; bottom: 0; width: 80px;
+  background: linear-gradient(90deg, rgba(13,148,136,0.04) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+/* ————————————— Name block top border (about) ————————————— */
+.mkt-topbar-gradient::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(135deg, #0d9488, #06b6d4);
+}
+
+/* ————————————— CTA card (dark) ————————————— */
+.mkt-cta-dark {
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 56px 48px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.mkt-cta-dark::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; width: 60%; height: 100%;
+  background: radial-gradient(ellipse at 80% 30%, rgba(13,148,136,0.2) 0%, transparent 60%);
+  pointer-events: none;
+}
+.mkt-cta-dark::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; width: 40%; height: 60%;
+  background: radial-gradient(ellipse at 0% 100%, rgba(6,182,212,0.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ————————————— Contrast section (dark with teal glow) ————————————— */
+.mkt-contrast-section {
+  background: #1a1a1a;
+  color: white;
+  padding: 100px 48px;
+  position: relative;
+  overflow: hidden;
+}
+.mkt-contrast-section::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 50%; height: 100%;
+  background: radial-gradient(ellipse at 80% 30%, rgba(13,148,136,0.15) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ————————————— CTA section fading bottom glow (landing) ————————————— */
+.mkt-cta-bottom-glow::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 60%;
+  background: radial-gradient(ellipse 80% 80% at 50% 100%, rgba(13,148,136,0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ————————————— Hero ambient (landing only) ————————————— */
+.mkt-hero-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(13,148,136,0.06) 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 80% 20%, rgba(6,182,212,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* ————————————— Countries-block corner glow (about) ————————————— */
+.mkt-countries-glow::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0; width: 200px; height: 200px;
+  background: radial-gradient(circle at 100% 100%, rgba(13,148,136,0.04) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ————————————— Visual-card corner glow (how-it-works) ————————————— */
+.mkt-visual-card-glow::after {
+  content: '';
+  position: absolute;
+  bottom: 0; right: 0; width: 120px; height: 120px;
+  background: radial-gradient(circle at 100% 100%, rgba(13,148,136,0.03) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ————————————— Checkmark-style native checkbox (welcome) ————————————— */
+.mkt-welcome-checkbox {
+  width: 20px; height: 20px;
+  border-radius: 6px;
+  border: 2px solid rgba(0,0,0,0.15);
+  flex-shrink: 0;
+  margin-top: 1px;
+  position: relative;
+  transition: all 0.15s;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #ffffff;
+}
+.mkt-welcome-checkbox:checked {
+  background: linear-gradient(135deg, #0d9488, #06b6d4);
+  border-color: #0d9488;
+}
+.mkt-welcome-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px; top: 2px;
+  width: 6px; height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ————————————— Upload zone border (how-it-works step 1) ————————————— */
+.mkt-upload-zone {
+  border: 2px dashed rgba(13,148,136,0.2);
+  border-radius: 12px;
+}
+
+/* ————————————— Mobile reset for contrast section ————————————— */
+@media (max-width: 768px) {
+  .mkt-contrast-section {
+    padding: 72px 24px !important;
+  }
+  .mkt-cta-dark {
+    padding: 40px 28px !important;
+  }
+}
