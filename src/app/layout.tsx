@@ -25,12 +25,19 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://incipit.dev"),
+  applicationName: "Incipit",
   title: {
     default: "Incipit, your research archive, finally intelligent.",
     template: "%s | Incipit",
   },
   description:
     "AI-powered archival research assistant for historians. Turn messy fieldwork scans into a persistent, searchable, relationship-aware research archive.",
+  manifest: "/site.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "Incipit",
+    statusBarStyle: "black-translucent",
+  },
   openGraph: {
     title: "Incipit",
     description: "Your research archive, finally intelligent.",
