@@ -79,6 +79,8 @@ A connection is meaningful when it would change how the historian thinks about t
 TASK 2 — STANDING QUERY MATCHING
 The historian records research notes — plain-language hunches — when uploading documents. Each note captures a suspected connection or lead. Compare the new document against every research note provided. A match means the new document provides evidence for, against, or adjacent to the historian's intuition — not just that they share a keyword.
 
+IMPORTANT: When a standing research note matches, you MUST also emit a CONNECTION entry whose target_document_id is the document the note was attached to (listed in STANDING RESEARCH NOTES as "document ID ..."). Set matched_note_id on that connection. The matched_notes array is metadata; the connection is what the historian actually sees. Without the connection, the match is invisible. The note's source document is always included in the CANDIDATE DOCUMENTS list, so you always have enough information to form the connection.
+
 TASK 3 — OUTSIDE-RESEARCH DETECTION
 Given the research profile, does this document belong in the historian's current research scope? Only flag it as outside-scope if it is genuinely unrelated — different era, different geography, unrelated topic. Be conservative: historians often grab documents that seem tangential but turn out to be crucial.
 
@@ -125,8 +127,30 @@ export async function buildAnalysisInput(
   const docResearchNote = await fetchNoteForDocument(supabase, documentId);
   const profile = await fetchProfile(supabase, doc.research_profile_id);
 
-  const candidates = await fetchCandidates(supabase, doc, docEntities);
+  // Fetch standing notes first so we can force-include their source docs as
+  // candidates — otherwise a hunch whose source doc shares no entity or date
+  // with the new upload would be invisible to Opus.
   const standingNotes = await fetchStandingNotes(supabase, documentId);
+  const forcedCandidateIds = Array.from(
+    new Set(standingNotes.map((n) => n.document_id)),
+  );
+  const candidates = await fetchCandidates(
+    supabase,
+    doc,
+    docEntities,
+    forcedCandidateIds,
+  );
+
+  console.log("[connection-analysis] buildAnalysisInput", {
+    document_id: documentId,
+    doc_entity_count: docEntities.length,
+    has_research_note: !!docResearchNote,
+    standing_note_count: standingNotes.length,
+    standing_note_ids: standingNotes.map((n) => n.id),
+    forced_candidate_ids: forcedCandidateIds,
+    candidate_count: candidates.length,
+    candidate_ids: candidates.map((c) => c.id),
+  });
 
   return {
     doc,
@@ -202,6 +226,7 @@ async function fetchCandidates(
   supabase: SupabaseClient,
   doc: DocumentRow,
   docEntities: AnalysisEntity[],
+  forcedIds: string[] = [],
 ): Promise<Candidate[]> {
   const sharedByEntity: Map<string, number> = new Map();
   if (docEntities.length > 0) {
@@ -235,29 +260,42 @@ async function fetchCandidates(
     }
   }
 
+  // Note-source docs are forced into the candidate pool even if they share
+  // no entity/date with the new upload, so Opus can see them and form the
+  // connection that answers the historian's standing hunch.
+  const forced = new Set(forcedIds.filter((id) => id !== doc.id));
+
   // Union candidate ids.
   const candidateIds = new Set<string>([
     ...sharedByEntity.keys(),
     ...dateMatches.keys(),
+    ...forced,
   ]);
   if (candidateIds.size === 0) return [];
 
-  // Rank: shared entity count desc, then year distance asc.
+  // Rank: forced note-source docs first, then shared entity count desc,
+  // then year distance asc. Forced docs bypass the cap.
   const ranked = Array.from(candidateIds)
     .map((id) => ({
       id,
+      forced: forced.has(id),
       shared: sharedByEntity.get(id) ?? 0,
       distance: dateMatches.get(id) ?? null,
     }))
     .sort((a, b) => {
+      if (a.forced !== b.forced) return a.forced ? -1 : 1;
       if (b.shared !== a.shared) return b.shared - a.shared;
       const da = a.distance ?? 9999;
       const db = b.distance ?? 9999;
       return da - db;
-    })
-    .slice(0, MAX_CANDIDATES);
+    });
+  const forcedRanked = ranked.filter((r) => r.forced);
+  const unforced = ranked
+    .filter((r) => !r.forced)
+    .slice(0, Math.max(0, MAX_CANDIDATES - forcedRanked.length));
+  const finalRanked = [...forcedRanked, ...unforced];
 
-  const ids = ranked.map((r) => r.id);
+  const ids = finalRanked.map((r) => r.id);
   const { data: docs } = await supabase
     .from("documents")
     .select(
@@ -292,7 +330,7 @@ async function fetchCandidates(
   }
 
   const out: Candidate[] = [];
-  for (const r of ranked) {
+  for (const r of finalRanked) {
     const d = byId.get(r.id);
     if (!d) continue;
     const title =
@@ -320,12 +358,24 @@ async function fetchStandingNotes(
   supabase: SupabaseClient,
   excludeDocId: string,
 ): Promise<StandingNote[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("research_notes")
     .select(
       "id, note_text, document_id, documents:document_id(id, title_subject, publication_name, original_filename)",
     )
     .eq("is_standing_query", true);
+  if (error) {
+    console.error("[connection-analysis] fetchStandingNotes query error", error);
+    return [];
+  }
+  console.log("[connection-analysis] fetchStandingNotes raw rows", {
+    exclude_doc_id: excludeDocId,
+    row_count: data?.length ?? 0,
+    rows: (data ?? []).map((r) => {
+      const rr = r as { id: string; document_id: string | null };
+      return { id: rr.id, document_id: rr.document_id };
+    }),
+  });
   if (!data) return [];
   const out: StandingNote[] = [];
   for (const row of data) {
@@ -373,6 +423,13 @@ function extractYear(s: string | null): number | null {
 // =====================================================================
 export async function runAnalysis(input: AnalysisInput): Promise<AnalysisResult> {
   const user = buildUserMessage(input);
+  console.log("[connection-analysis] runAnalysis user message", {
+    document_id: input.doc.id,
+    char_count: user.length,
+    standing_note_count: input.standingNotes.length,
+    candidate_count: input.candidates.length,
+    user_message_preview: user.slice(0, 1200),
+  });
   const client = getAnthropic();
   const response = await client.messages.create({
     model: OPUS_MODEL,
@@ -397,6 +454,11 @@ export async function runAnalysis(input: AnalysisInput): Promise<AnalysisResult>
     .join("\n")
     .trim();
 
+  console.log("[connection-analysis] Opus raw response", {
+    document_id: input.doc.id,
+    response_text: text,
+  });
+
   const json = extractJsonObject(text);
   let parsed: unknown;
   try {
@@ -405,7 +467,16 @@ export async function runAnalysis(input: AnalysisInput): Promise<AnalysisResult>
     console.error("[connection-analysis] JSON parse failed. Full response:\n", text);
     throw new Error("Failed to parse analysis JSON from Opus 4.7");
   }
-  return normalizeResult(parsed);
+  const result = normalizeResult(parsed);
+  console.log("[connection-analysis] normalized result", {
+    document_id: input.doc.id,
+    connection_count: result.connections.length,
+    connections_with_note: result.connections.filter((c) => c.matched_note_id).length,
+    matched_notes_count: result.matched_notes.length,
+    matched_note_ids: result.matched_notes.map((n) => n.note_id),
+    fits_research_profile: result.fits_research_profile,
+  });
+  return result;
 }
 
 function buildUserMessage(input: AnalysisInput): string {
