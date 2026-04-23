@@ -49,7 +49,7 @@ export function Sidebar({ user, usage }: SidebarProps) {
       }}
     >
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-3 px-2 py-2">
+      <Link href="/archive" className="flex items-center gap-3 px-2 py-2">
         <span className="logo-tile">I</span>
         <span className="flex flex-col leading-tight">
           <span

@@ -23,8 +23,9 @@ const LINKS: NavLink[] = [
   },
 ];
 
-export function MarketingNav() {
+export function MarketingNav({ signedIn = false }: { signedIn?: boolean }) {
   const pathname = usePathname() ?? "/";
+  const logoHref = signedIn ? "/archive" : "/";
 
   return (
     <nav
@@ -35,7 +36,7 @@ export function MarketingNav() {
         WebkitBackdropFilter: "blur(20px)",
       }}
     >
-      <Link href="/" className="flex items-center gap-3 no-underline">
+      <Link href={logoHref} className="flex items-center gap-3 no-underline">
         <span
           className="flex h-9 w-9 items-center justify-center rounded-[10px] font-display text-[16px] font-bold text-white"
           style={{
