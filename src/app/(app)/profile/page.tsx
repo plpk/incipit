@@ -1,12 +1,17 @@
 import Link from "next/link";
-import { getCurrentProfile } from "@/lib/queries";
+import { redirect } from "next/navigation";
+import { getAuthUser } from "@/lib/auth";
+import { getResearchProfileForUser } from "@/lib/queries";
 import { PageShell } from "@/components/PageShell";
 import { ProfileManager } from "./ProfileManager";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const profile = await getCurrentProfile();
+  const user = await getAuthUser();
+  if (!user) redirect("/signin");
+
+  const profile = await getResearchProfileForUser(user.id);
   if (!profile) {
     return (
       <PageShell>

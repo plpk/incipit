@@ -1,13 +1,19 @@
 import { getServerSupabase } from "@/lib/supabase/server";
 import type { DocumentRow, ResearchProfile } from "@/lib/types";
 
-// Returns the most recently updated research profile, if any. v1 is
-// single-user; the concept of "current" profile is just whichever exists.
-export async function getCurrentProfile(): Promise<ResearchProfile | null> {
+// Every query in this file takes a `userId` and filters by it. RLS on
+// the Supabase side gives us a second line of defence, but the application
+// queries filter explicitly so a future bug (or service-role misuse) can't
+// leak rows across users.
+
+export async function getResearchProfileForUser(
+  userId: string,
+): Promise<ResearchProfile | null> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("research_profiles")
     .select("*")
+    .eq("user_id", userId)
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -15,22 +21,30 @@ export async function getCurrentProfile(): Promise<ResearchProfile | null> {
   return (data as ResearchProfile | null) ?? null;
 }
 
-export async function listDocuments(limit = 50): Promise<DocumentRow[]> {
+export async function listDocumentsForUser(
+  userId: string,
+  limit = 50,
+): Promise<DocumentRow[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("documents")
     .select("*")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as DocumentRow[];
 }
 
-export async function getDocument(id: string): Promise<DocumentRow | null> {
+export async function getDocumentForUser(
+  userId: string,
+  id: string,
+): Promise<DocumentRow | null> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("documents")
     .select("*")
+    .eq("user_id", userId)
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -45,13 +59,15 @@ export type DocumentEntity = {
   context_snippet: string | null;
 };
 
-export async function getDocumentEntities(
+export async function getDocumentEntitiesForUser(
+  userId: string,
   documentId: string,
 ): Promise<DocumentEntity[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from("document_entities")
     .select("confidence, context_snippet, entities(id, name, entity_type)")
+    .eq("user_id", userId)
     .eq("document_id", documentId);
   if (error) return [];
   return (data ?? [])
@@ -92,7 +108,8 @@ export type DocumentConnection = {
   matched_note_source_title: string | null;
 };
 
-export async function getDocumentConnections(
+export async function getDocumentConnectionsForUser(
+  userId: string,
   documentId: string,
 ): Promise<DocumentConnection[]> {
   const supabase = getServerSupabase();
@@ -101,6 +118,7 @@ export async function getDocumentConnections(
     .select(
       "id, source_document_id, target_document_id, connection_type, strength, description, linked_entities, matched_note_id, target:target_document_id(id, title_subject, publication_name, original_filename), source:source_document_id(id, title_subject, publication_name, original_filename), note:matched_note_id(id, note_text, documents:document_id(title_subject, publication_name, original_filename))",
     )
+    .eq("user_id", userId)
     .or(`source_document_id.eq.${documentId},target_document_id.eq.${documentId}`)
     .order("created_at", { ascending: false })
     .limit(40);
@@ -175,7 +193,6 @@ export async function getDocumentConnections(
           }>
         | null;
     };
-    // Always display the "other" document relative to the one we're viewing.
     const outboundTarget =
       r.source_document_id === documentId ? r.target : r.source;
     const otherId =
@@ -214,7 +231,6 @@ export async function getDocumentConnections(
         noteDoc?.original_filename ??
         null,
     };
-    // Deduplicate symmetric pairs — viewing from either side shows one card.
     const key = [
       documentId,
       entry.target_document_id,

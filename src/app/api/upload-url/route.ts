@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getAuthUser } from "@/lib/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { assertServerEnv, env } from "@/lib/env";
 
@@ -25,6 +26,12 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   try {
     assertServerEnv();
+
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json(
@@ -40,16 +47,38 @@ export async function POST(req: Request) {
       );
     }
 
-    const ext = extensionFor(body.file_type, body.filename);
-    const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
+    // Cap enforcement at the URL-minting stage — fail fast so the client
+    // doesn't upload bytes we can't accept.
+    const admin = getServerSupabase();
+    const { data: profile, error: profileErr } = await admin
+      .from("profiles")
+      .select("document_count, document_limit")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (profileErr) throw profileErr;
+    const count = profile?.document_count ?? 0;
+    const limit = profile?.document_limit ?? 5;
+    if (count >= limit) {
+      return NextResponse.json(
+        {
+          error: `You've reached your early access limit of ${limit} documents. We'll expand this as Incipit grows.`,
+          code: "DOCUMENT_LIMIT_REACHED",
+        },
+        { status: 403 },
+      );
+    }
 
-    const supabase = getServerSupabase();
-    const { data, error } = await supabase.storage
+    const ext = extensionFor(body.file_type, body.filename);
+    // Path prefix MUST be the user's uuid — the storage RLS policies gate
+    // access by (storage.foldername(name))[1] = auth.uid()::text.
+    const path = `${user.id}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}${ext}`;
+
+    const { data, error } = await admin.storage
       .from(env.supabaseBucket)
       .createSignedUploadUrl(path);
     if (error) throw error;
 
-    const { data: publicUrlData } = supabase.storage
+    const { data: publicUrlData } = admin.storage
       .from(env.supabaseBucket)
       .getPublicUrl(path);
 

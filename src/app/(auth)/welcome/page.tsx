@@ -1,10 +1,39 @@
+import { redirect } from "next/navigation";
+import { getAuthUser } from "@/lib/auth";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { WelcomeForm } from "./WelcomeForm";
 
 export const metadata = {
   title: "Welcome — Incipit",
 };
 
-export default function WelcomePage() {
+export const dynamic = "force-dynamic";
+
+function firstName(full: string | null): string {
+  if (!full) return "there";
+  const trimmed = full.trim();
+  if (!trimmed) return "there";
+  return trimmed.split(/\s+/)[0];
+}
+
+export default async function WelcomePage() {
+  const user = await getAuthUser();
+  if (!user) redirect("/signin");
+
+  const admin = getServerSupabase();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("full_name, email, marketing_opt_in, onboarding_completed")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // Already onboarded? Welcome is a first-run screen only.
+  if (profile?.onboarding_completed) {
+    redirect("/archive");
+  }
+
+  const display = firstName(profile?.full_name ?? user.full_name);
+
   return (
     <div
       className="relative z-10 w-full max-w-[440px] px-6"
@@ -28,7 +57,7 @@ export default function WelcomePage() {
         </div>
 
         <h1 className="mb-2 font-display text-[26px] font-bold tracking-tight">
-          Welcome, <span className="mkt-gradient-text">María</span>
+          Welcome, <span className="mkt-gradient-text">{display}</span>
         </h1>
         <p className="mb-9 text-[15px] leading-[1.6] text-ink-400">
           Your archive is ready. Let&apos;s set it up for your research.
@@ -48,7 +77,7 @@ export default function WelcomePage() {
           </div>
         </div>
 
-        <WelcomeForm />
+        <WelcomeForm initialOptIn={profile?.marketing_opt_in ?? false} />
       </div>
 
       <div className="mt-8 text-center">

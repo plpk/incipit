@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { env } from "@/lib/env";
-import { getCurrentProfile } from "@/lib/queries";
+import { getAuthUser } from "@/lib/auth";
+import { getServerSupabase } from "@/lib/supabase/server";
 import { OnboardingFlow } from "./OnboardingFlow";
 
 export const dynamic = "force-dynamic";
@@ -10,15 +11,21 @@ export default async function OnboardingPage() {
   if (!env.supabaseUrl || !env.supabaseServiceRoleKey) {
     redirect("/setup");
   }
-  // Query outside the try so a redirect() throw isn't swallowed by the
-  // catch and rerouted to /setup.
-  let existing = null;
-  try {
-    existing = await getCurrentProfile();
-  } catch {
-    redirect("/setup");
+
+  const user = await getAuthUser();
+  if (!user) redirect("/signin");
+
+  const admin = getServerSupabase();
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("onboarding_completed")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // Already onboarded? Send them straight into the app.
+  if (profile?.onboarding_completed) {
+    redirect("/upload");
   }
-  if (existing) redirect("/upload");
 
   return (
     <main className="min-h-screen">

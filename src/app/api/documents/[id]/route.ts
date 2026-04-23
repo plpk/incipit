@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth";
 import { getServerSupabase } from "@/lib/supabase/server";
 import { assertServerEnv, env } from "@/lib/env";
 
@@ -11,15 +12,21 @@ export async function DELETE(
 ) {
   try {
     assertServerEnv();
+    const user = await getAuthUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    }
+
     const supabase = getServerSupabase();
     const id = params.id;
 
-    // Load the row so we know which storage object to remove. If the doc is
-    // already gone, treat the request as a no-op (idempotent delete).
+    // Fetch scoped by user. If the doc doesn't belong to the caller, treat
+    // as "not found" so we don't leak existence info.
     const { data: doc, error: fetchErr } = await supabase
       .from("documents")
-      .select("id, file_path")
+      .select("id, file_path, user_id")
       .eq("id", id)
+      .eq("user_id", user.id)
       .maybeSingle();
     if (fetchErr) throw fetchErr;
     if (!doc) {
@@ -30,21 +37,29 @@ export async function DELETE(
       const { error: storageErr } = await supabase.storage
         .from(env.supabaseBucket)
         .remove([doc.file_path]);
-      // Don't fail the whole delete if the object is missing — log and proceed
-      // so the DB row still gets removed.
       if (storageErr) {
         console.error("[documents.delete] storage remove failed", storageErr);
       }
     }
 
-    // document_changelog, document_entities, and connections cascade on
-    // documents.id. research_notes.document_id is SET NULL so standing notes
-    // survive, which is deliberate.
     const { error: delErr } = await supabase
       .from("documents")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", user.id);
     if (delErr) throw delErr;
+
+    // Decrement counter (clamped at zero).
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("document_count")
+      .eq("id", user.id)
+      .maybeSingle();
+    const next = Math.max(0, (profile?.document_count ?? 0) - 1);
+    await supabase
+      .from("profiles")
+      .update({ document_count: next })
+      .eq("id", user.id);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
