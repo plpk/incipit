@@ -5,7 +5,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { SigninButtons } from "./SigninButtons";
 
 export const metadata = {
-  title: "Sign In — Incipit",
+  title: "Sign In",
 };
 
 export const dynamic = "force-dynamic";

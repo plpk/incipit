@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Reveal } from "@/components/marketing/Reveal";
 
 export const metadata = {
-  title: "How It Works — Incipit",
+  title: "How It Works",
   description: "From scan to searchable in five steps.",
 };
 

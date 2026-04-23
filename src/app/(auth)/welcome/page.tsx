@@ -4,7 +4,7 @@ import { getServerSupabase } from "@/lib/supabase/server";
 import { WelcomeForm } from "./WelcomeForm";
 
 export const metadata = {
-  title: "Welcome — Incipit",
+  title: "Welcome",
 };
 
 export const dynamic = "force-dynamic";
