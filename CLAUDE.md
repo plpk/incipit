@@ -1,85 +1,96 @@
 # CLAUDE.md
 
 ## Project
-Incipit — AI-powered archival research assistant for historians. Hackathon build: April 21–26, 2026. Open source.
+Incipit is an AI-powered archival research assistant for historians. Built for the Cerebral Valley / Anthropic "Built with Opus 4.7" hackathon (April 21 to 26, 2026). Live in production at [incipit.dev](https://www.incipit.dev). License: AGPL-3.0.
 
-The name comes from manuscript studies: an incipit is the opening words of a text, used to identify documents before titles existed.
+The name comes from manuscript studies. An *incipit* is the opening words of a text, used to identify documents before titles existed.
 
-## What This Product Does
-Historians upload scanned primary source documents (newspaper scans, letters, government records, photographs of archival pages). Opus 4.7 vision reads the image — not any existing OCR text layer — and extracts structured metadata. The historian confirms or corrects the extraction. Documents accumulate in a persistent, searchable archive where every new upload is checked against everything that came before. The historian's own research notes and hunches are stored as standing queries that activate against future documents.
+## What Incipit Does
+Historians upload scanned primary source documents: newspaper scans, handwritten letters, government records, photographs of archival pages. Opus 4.7 vision reads the image itself, never an existing OCR text layer, and extracts structured metadata. The historian confirms or corrects the extraction before anything is committed to the archive. Documents accumulate in a persistent, searchable archive where every new upload is checked against everything that came before. The historian's own research notes and hunches are stored as standing queries that activate against future documents.
 
 ## Who It's For
-Non-technical academic historians. The interface must be intuitive for someone who has never opened a terminal. Think: a 65-year-old professor who barely uses Google Drive. Clean, modern, simple — not dated, not gimmicky.
+Non-technical academic historians. The interface must be intuitive for someone who has never opened a terminal. Think: a 65-year-old professor who barely uses Google Drive. Clean, modern, simple. Not dated, not gimmicky.
 
-## Role
-Louis directs every product decision. Claude Code has maximum autonomy on implementation, architecture, and technical decisions. When the direction is clear, build. Don't ask unnecessary clarifying questions. Ship working features, iterate, keep moving.
+## Working Relationship
+Louis directs every product decision. Louis does not write code. Claude Code has maximum autonomy on implementation, architecture, and technical decisions. When the direction is clear, build. Don't ask unnecessary clarifying questions. Ship working features, iterate, keep moving.
+
+Before making changes, read the relevant existing code. Don't assume based on the feature list below. The codebase is the source of truth.
 
 ## Stack
 - Next.js 14 App Router
-- Supabase (Postgres + file storage)
-- Claude API with Opus 4.7 (vision extraction, entity analysis, connection surfacing)
-- Vercel (deployment)
+- Supabase: Postgres, Row Level Security, file storage, Google and Apple OAuth
+- Claude API with Opus 4.7 (vision extraction, entity analysis, connection surfacing, research context interpretation)
+- Vercel (production deployment at incipit.dev, auto-deploy from main)
 - Do not introduce dependencies beyond this stack without asking.
 
-## Features to Build
+## Current State (shipped and working in production)
 
-### 1. Research Context Onboarding
-First-run flow where the historian describes their research in plain language. AI asks clarifying questions: topic, time period, countries, goal (dissertation, book, course), audience. Produces a research profile stored in the database that informs all subsequent extraction and connection queries.
+### Marketing site
+- Landing page, How It Works page, About page, /early explainer, Terms, Privacy, Sign In
 
-### 2. Document Ingestion with Opus 4.7 Vision
-Upload scanned documents (PDF, images). Send the visual image to Opus 4.7 — always read from the image, never from an existing OCR text layer. Extract: publication name, date, title/subject, author, key entities (people, places, organizations), language, full extracted text. Each field gets a confidence score: high, medium, low, unable to determine.
+### Auth and access
+- Google OAuth and Apple OAuth via Supabase
+- Routing state machine enforced at middleware level with three states: unauthenticated, authenticated without profile, authenticated with profile
+- Full account deletion (typed DELETE confirmation, cascades to all user-scoped data)
+- Early access gate: 5 documents per account
 
-### 3. Historian Confirmation Step
-Before metadata is committed, historian reviews and can correct any field. Trust tiers: T1 (historian-verified), T2 (high-confidence unconfirmed), T3 (flagged uncertain). No metadata is treated as final until confirmed.
+### Core research workflow
+- Research context onboarding (AI-guided, plain language, produces a research profile stored in DB)
+- Single-document ingestion with Opus 4.7 vision
+- Structured metadata extraction with confidence scores
+- Historian confirmation with trust tiers (T1 verified, T2 high-confidence unconfirmed, T3 uncertain)
+- Provenance tracking (archive source, acquisition method, date, original filename)
+- Metadata changelog (every change logged, original filename preserved permanently)
+- Auto file naming from confirmed metadata
+- Research notes at upload time stored as standing queries
+- Cross-document connection surfacing (new documents compared against full archive, informed by research context and notes)
+- Outside-current-research tagging with side collection
+- Citation generator (Chicago/Turabian from confirmed metadata)
+- Natural language search across the archive
+- Document download (zip with renamed scan and metadata sidecar JSON)
 
-### 4. Provenance Tracking
-Every document records: archive name and location (where), acquisition method (how — physical scan, photograph, digital download), date of discovery (when), and original filename or catalog reference. Support batch entry — set the archive source once for a group of uploads.
-
-### 5. Metadata Changelog
-Original filename preserved permanently. Every change logged with dates: AI renamed to X, historian corrected to Y. This matters because seemingly gibberish filenames (like UN catalog codes S-1301-0000-2317) are actually archive reference numbers.
-
-### 6. Auto File Naming
-Generate structured filename from confirmed metadata following a consistent convention. Original filename always preserved in the changelog.
-
-### 7. Research Notes at Ingestion
-Text field at upload time for the historian to write plain-language notes — hunches, context clues, suspected connections. These notes are stored as standing queries. When future documents are ingested, they are checked against all existing notes, not just entity matching. Example: "I think this connects to something at the UN archives about Tacna-Arica."
-
-### 8. Citation Generator
-From confirmed metadata, produce Chicago/Turabian formatted citation. Copy-paste ready. If a field is uncertain, the citation reflects that rather than guessing.
-
-### 9. Natural Language Search
-Query across all ingested documents. "Show me everything mentioning Vasconcelos" works regardless of source collection or country.
-
-### 10. Cross-Document Connection Surfacing
-When a new document is ingested, compare against all existing documents — entities, dates, themes — informed by the research context profile AND the historian's notes. Flag meaningful connections, not just raw entity matches.
-
-### 11. Outside-Current-Research Tagging
-AI recognizes when an uploaded document doesn't fit the historian's stated research context. Prompts: "This doesn't appear to relate to your current research — save to a separate collection?" Historian can tag it as a future research thread with a note about why they grabbed it.
-
-### 12. Simple, Modern Interface
-Dead simple for non-technical users. Modern and clean design. Not dated, not cheesy, not gimmicky.
+### Held back from the hackathon build
+- Batch document upload with Claude Managed Agents: paused for post-hackathon commercial development
+- All other commercial features (voice notes, mobile capture, archive recommender, parallel research projects, collaboration, additional citation formats, enriched file download, Stripe integration)
 
 ## Key Design Principles
-- The AI always reads from the visual image, never from existing OCR text layers.
+- The AI always reads from the visual image, never from an existing OCR text layer.
 - Confidence scores on every extracted field. No silent guessing.
 - Historian confirmation before metadata is committed. Trust is non-negotiable.
 - The system gets smarter with every document added. Document 200 is more valuable than document 1.
-- Research notes are not passive — they are active queries against future uploads.
-- Spanish language support is required. The primary source documents are predominantly in Spanish.
+- Research notes are not passive. They are active queries against future uploads.
+- Spanish language support is required. Primary source documents are predominantly in Spanish.
+- Archival integrity: the original scan is never altered. Metadata travels as a sidecar, not baked into the file.
 
 ## Database
-- Documents table with all metadata fields, confidence scores, trust tiers, provenance, changelog
-- Entities table (people, places, organizations)
-- Entity-document junction table for relationship mapping
-- Research context / profile table
-- Research notes table linked to documents but also queryable against future uploads
-- Side collections for outside-current-research documents
+All tables are user-scoped. Row Level Security is enforced. All user-scoped tables have ON DELETE CASCADE tied to auth.users as a safety net.
+
+Core tables:
+- `profiles` (user profile + research context)
+- `documents` (metadata, confidence scores, trust tiers, provenance, changelog)
+- `entities` (people, places, organizations)
+- `document_entities` (junction table)
+- `research_notes` (linked to documents, queryable against future uploads)
+- `connections` (surfaced relationships between documents)
+- `side_collections` (outside-current-research documents)
+
+Migrations live in `supabase/migrations/`.
 
 ## Git
-- Atomic commits with descriptive messages.
-- Main branch should always be deployable.
+- Atomic commits with descriptive messages using conventional commit prefixes (feat, fix, chore, refactor, docs).
+- Main branch is always deployable.
+- Vercel auto-deploys production from main. Preview deploys on PRs.
+- Do not commit secrets. `.env.local` is gitignored.
 
-## Naming
-- Database tables: snake_case
+## Code Conventions
+- Database tables and columns: snake_case
 - React components: PascalCase
-- Keep the codebase navigable.
+- TypeScript preferred over JavaScript for new code
+- Keep the codebase navigable. Don't create new top-level folders without reason.
+
+## Rules for Changes
+- Do not refactor working features without being asked.
+- Do not restructure folders without being asked.
+- Do not update dependencies without being asked.
+- When in doubt, make the smallest change that solves the problem.
+- Test end-to-end after every change. Production is live with real users.
