@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ResearchProfile } from "@/lib/types";
-import { ConfirmDialog } from "@/app/(app)/document/[id]/DeleteDocumentButton";
 
 type EditableFields = {
   research_description: string;
@@ -34,10 +33,6 @@ export function ProfileManager({ profile }: { profile: ResearchProfile }) {
   const [draft, setDraft] = useState<EditableFields>(toEditable(profile));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function startEdit() {
     setDraft(toEditable(current));
@@ -91,23 +86,6 @@ export function ProfileManager({ profile }: { profile: ResearchProfile }) {
     }
   }
 
-  async function confirmDelete() {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const res = await fetch("/api/research-profile", { method: "DELETE" });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error ?? `Delete failed (${res.status})`);
-      }
-      router.push("/onboarding");
-      router.refresh();
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Delete failed");
-      setDeleting(false);
-    }
-  }
-
   return (
     <>
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -132,35 +110,13 @@ export function ProfileManager({ profile }: { profile: ResearchProfile }) {
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-2">
           {mode === "view" ? (
-            <>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={startEdit}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-btn px-3 py-2 text-[12px] font-semibold transition"
-                style={{
-                  color: "#a1a1aa",
-                  border: "1px solid rgba(220,38,38,0.15)",
-                  background: "rgba(220,38,38,0.02)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "#dc2626";
-                  e.currentTarget.style.background = "rgba(220,38,38,0.06)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "#a1a1aa";
-                  e.currentTarget.style.background = "rgba(220,38,38,0.02)";
-                }}
-              >
-                Delete profile
-              </button>
-            </>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={startEdit}
+            >
+              Edit
+            </button>
           ) : (
             <>
               <button
@@ -196,22 +152,6 @@ export function ProfileManager({ profile }: { profile: ResearchProfile }) {
         )}
       </div>
 
-      {deleteOpen && (
-        <ConfirmDialog
-          title="Delete your research profile?"
-          body="Your uploaded documents will stay in the archive but become unassociated. You can create a new profile anytime."
-          confirmLabel={deleting ? "Deleting…" : "Delete profile"}
-          cancelLabel="Cancel"
-          disabled={deleting}
-          error={deleteError}
-          onCancel={() => {
-            if (deleting) return;
-            setDeleteOpen(false);
-            setDeleteError(null);
-          }}
-          onConfirm={confirmDelete}
-        />
-      )}
     </>
   );
 }
