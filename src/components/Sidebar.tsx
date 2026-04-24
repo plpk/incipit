@@ -32,10 +32,8 @@ export function Sidebar({ user, usage }: SidebarProps) {
 
   const atLimit = usage.count >= usage.limit;
   const pct = Math.min(100, Math.round((usage.count / usage.limit) * 100));
-  const displayName =
-    user.full_name?.trim().split(/\s+/)[0] ??
-    user.email?.split("@")[0] ??
-    "Researcher";
+  const profileFirstName = user.full_name?.trim().split(/\s+/)[0] ?? null;
+  const displayName = profileFirstName ?? "Researcher";
 
   return (
     <aside
