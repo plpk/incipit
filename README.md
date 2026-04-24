@@ -36,7 +36,7 @@ Existing AI tools let you "chat with your documents." That's a feature, not a pr
 
 ## Who Built This
 
-**Louis Kunasek** — Solo builder. Not a software engineer. Completed all coursework for a PhD in History at the University of Puerto Rico, Río Piedras. Conducted firsthand archival research across eight countries in Latin America. Holds a researcher credential from the Archivo General de la Nación in Lima, Peru. US Army combat veteran (Iraq 2003–2004, Combat Infantryman Badge, Army Commendation Medal for Valor).
+**Louis Kunasek** — Solo builder. Not a software engineer. Completed all coursework for a PhD in History at the University of Puerto Rico, Río Piedras. Conducted firsthand archival research across eight countries in Latin America. Holds a researcher credential from the Archivo General de la Nación in Lima, Peru. US Army combat veteran (Iraq 2003–2004).
 
 Every feature in Incipit comes from years of direct experience in archives. This is the tool I needed and nobody had built.
 
