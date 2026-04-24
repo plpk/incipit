@@ -14,12 +14,12 @@ The name comes from manuscript studies: an *incipit* is the opening words of a t
 ## Screenshots
 
 <p>
-  <img src="public/screenshots/landing-hero.png" alt="Incipit landing page" width="400">
-  <img src="public/screenshots/how-it-works.png" alt="How It Works page" width="400">
+  <img src="public/screenshots/landing-hero.jpg" alt="Incipit landing page" width="400">
+  <img src="public/screenshots/how-it-works.jpg" alt="How It Works page" width="400">
 </p>
 <p>
-  <img src="public/screenshots/about.png" alt="About page" width="400">
-  <img src="public/screenshots/signin.png" alt="Sign in page" width="400">
+  <img src="public/screenshots/about.jpg" alt="About page" width="400">
+  <img src="public/screenshots/signin.jpg" alt="Sign in page" width="400">
 </p>
 
 ---
