@@ -12,6 +12,7 @@ import { PageShell } from "@/components/PageShell";
 import { SetCurrentDocument } from "@/components/CurrentDocumentProvider";
 import { DocumentTabs } from "./DocumentTabs";
 import { DeleteDocumentButton } from "./DeleteDocumentButton";
+import { DownloadDocumentButton } from "./DownloadDocumentButton";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function DocumentPage({
               <span className="pill-brand-soft">
                 <span aria-hidden>✦</span> Opus 4.7
               </span>
+              <DownloadDocumentButton documentId={doc.id} />
               <DeleteDocumentButton
                 documentId={doc.id}
                 documentTitle={
