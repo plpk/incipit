@@ -1,12 +1,26 @@
 # Incipit
 
-**The research brain that grows with every document you feed it.**
+**Your research archive, finally intelligent.**
 
 Incipit is an AI-powered archival research assistant for historians. It turns messy fieldwork scans — degraded microfiche, century-old newsprint, handwritten letters, multilingual documents — into a persistent, searchable, relationship-aware personal research archive.
 
 The name comes from manuscript studies: an *incipit* is the opening words of a text, used to identify documents before titles existed. Incipit gives unnamed documents an identity.
 
-**Live at [incipit.dev](https://www.incipit.dev)**
+**🌐 Live at [incipit.dev](https://www.incipit.dev)**
+**🎥 Demo video: [coming soon]**
+
+---
+
+## Screenshots
+
+<p>
+  <img src="public/screenshots/landing-hero.png" alt="Incipit landing page" width="400">
+  <img src="public/screenshots/how-it-works.png" alt="How It Works page" width="400">
+</p>
+<p>
+  <img src="public/screenshots/about.png" alt="About page" width="400">
+  <img src="public/screenshots/signin.png" alt="Sign in page" width="400">
+</p>
 
 ---
 
@@ -19,6 +33,12 @@ You scan 60 documents in a day and they all come out as `IMG_0047.pdf`. OCR mang
 Before building Incipit, I used Claude Code to organize my own research archive — 15,000 files trimmed to 6,337 after deduplication and cleanup. AI solved the grunt work. But I still ended up with a folder-based metadata system that couldn't be searched, cross-referenced, or queried. The research problem remained unsolved.
 
 Existing AI tools let you "chat with your documents." That's a feature, not a product. Chat doesn't remember yesterday. Chat doesn't build a growing archive where document 201 is checked against the previous 200. Chat doesn't capture your research intuition and turn it into a standing query that activates six months later when you upload the right document.
+
+## Who Built This
+
+**Louis Kunasek** — Solo builder. Not a software engineer. Completed all coursework for a PhD in History at the University of Puerto Rico, Río Piedras. Conducted firsthand archival research across eight countries in Latin America. Holds a researcher credential from the Archivo General de la Nación in Lima, Peru. US Army combat veteran (Iraq 2003–2004, Combat Infantryman Badge, Army Commendation Medal for Valor).
+
+Every feature in Incipit comes from years of direct experience in archives. This is the tool I needed and nobody had built.
 
 ## What Incipit Does
 
@@ -88,12 +108,6 @@ What a chat window cannot do:
 - Recognize when a document falls outside the current research frame
 - Serve a non-technical user who will never open a terminal
 
-## Who Built This
-
-**Louis Kunasek** — Solo builder. Not a software engineer. Completed all coursework for a PhD in History at the University of Puerto Rico, Río Piedras. Conducted firsthand archival research across eight countries in Latin America. Holds a researcher credential from the Archivo General de la Nación in Lima, Peru. US Army combat veteran (Iraq 2003–2004).
-
-Every feature in Incipit comes from years of direct experience in archives. This is the tool I needed and nobody had built.
-
 ## Demo Documents
 
 Incipit is demonstrated with real primary source documents from my personal research archive:
@@ -109,26 +123,20 @@ Incipit is demonstrated with real primary source documents from my personal rese
 - **Claude API with Opus 4.7** — Vision extraction, entity analysis, connection surfacing, research context interpretation
 - **Vercel** — Production deployment at [incipit.dev](https://www.incipit.dev)
 
+## Roadmap
+
+Incipit is in early access. The current build is the foundation. Planned directions include expanded capture workflows, mobile-first tooling, richer research discovery features, multi-project support, and additional citation formats. Details available on request.
+
+## License
+
+AGPL-3.0. See [LICENSE](LICENSE) for the full text.
+
 ## Getting Started
 
-1. Clone the repo
-2. Create a Supabase project and run the migrations in `supabase/migrations/`
-3. Configure Google OAuth (and optionally Apple) in your Supabase dashboard
-4. Get an Anthropic API key with Opus 4.7 access
-5. Copy `.env.local.example` to `.env.local` and fill in your keys
-6. `npm install && npm run dev`
+Try it live at [incipit.dev](https://www.incipit.dev) — no setup required.
+
+To run locally: clone the repo, create a Supabase project with the migrations in `supabase/migrations/`, configure Google (and optionally Apple) OAuth, set an Anthropic API key with Opus 4.7 access in `.env.local`, then `npm install && npm run dev`.
 
 ---
-
-## Screenshots
-
-<p>
-  <img src="public/screenshots/landing-hero.jpg" alt="Incipit landing page" width="400">
-  <img src="public/screenshots/how-it-works.jpg" alt="How It Works page" width="400">
-</p>
-<p>
-  <img src="public/screenshots/about.jpg" alt="About page" width="400">
-  <img src="public/screenshots/signin.jpg" alt="Sign in page" width="400">
-</p>
 
 *Built for the [Built with Opus 4.7](https://cerebralvalley.ai/e/built-with-4-7-hackathon) hackathon — Cerebral Valley & Anthropic, April 21–26, 2026.*
