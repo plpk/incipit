@@ -9,13 +9,6 @@ export const metadata = {
 
 export const dynamic = "force-dynamic";
 
-function firstName(full: string | null): string {
-  if (!full) return "there";
-  const trimmed = full.trim();
-  if (!trimmed) return "there";
-  return trimmed.split(/\s+/)[0];
-}
-
 export default async function WelcomePage() {
   const user = await getAuthUser();
   if (!user) redirect("/signin");
@@ -23,7 +16,7 @@ export default async function WelcomePage() {
   const admin = getServerSupabase();
   const { data: profile } = await admin
     .from("profiles")
-    .select("full_name, email, marketing_opt_in, onboarding_completed")
+    .select("marketing_opt_in, onboarding_completed")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -31,8 +24,6 @@ export default async function WelcomePage() {
   if (profile?.onboarding_completed) {
     redirect("/archive");
   }
-
-  const display = firstName(profile?.full_name ?? user.full_name);
 
   return (
     <div
@@ -57,7 +48,7 @@ export default async function WelcomePage() {
         </div>
 
         <h1 className="mb-2 font-display text-[26px] font-bold tracking-tight">
-          Welcome, <span className="mkt-gradient-text">{display}</span>
+          Welcome.
         </h1>
         <p className="mb-9 text-[15px] leading-[1.6] text-ink-400">
           Your archive is ready. Let&apos;s set it up for your research.

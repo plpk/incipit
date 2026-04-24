@@ -11,6 +11,7 @@ const NAV = [
   { href: "/archive", label: "Archive", icon: ArchiveIcon },
   { href: "/search", label: "Search", icon: SearchIcon },
   { href: "/profile", label: "Research profile", icon: ProfileIcon },
+  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 type SidebarProps = {
@@ -32,10 +33,8 @@ export function Sidebar({ user, usage }: SidebarProps) {
 
   const atLimit = usage.count >= usage.limit;
   const pct = Math.min(100, Math.round((usage.count / usage.limit) * 100));
-  const displayName =
-    user.full_name?.trim().split(/\s+/)[0] ??
-    user.email?.split("@")[0] ??
-    "Researcher";
+  const profileFirstName = user.full_name?.trim().split(/\s+/)[0] ?? null;
+  const displayName = profileFirstName ?? "Researcher";
 
   return (
     <aside
@@ -250,6 +249,14 @@ function ProfileIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
+function SettingsIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
