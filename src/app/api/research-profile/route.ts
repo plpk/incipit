@@ -63,35 +63,3 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE() {
-  try {
-    assertServerEnv();
-    const user = await getAuthUser();
-    if (!user) {
-      return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
-    }
-
-    const supabase = getServerSupabase();
-
-    // documents.research_profile_id and research_notes.research_profile_id
-    // are both ON DELETE SET NULL, so detaching doesn't remove them.
-    const { error } = await supabase
-      .from("research_profiles")
-      .delete()
-      .eq("user_id", user.id);
-    if (error) throw error;
-
-    // Detaching the profile reopens onboarding on next load.
-    await supabase
-      .from("profiles")
-      .update({ onboarding_completed: false })
-      .eq("id", user.id);
-
-    revalidatePath("/", "layout");
-    return NextResponse.json({ ok: true });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[research-profile.delete] failed", err);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}

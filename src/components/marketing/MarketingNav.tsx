@@ -23,9 +23,30 @@ const LINKS: NavLink[] = [
   },
 ];
 
-export function MarketingNav({ signedIn = false }: { signedIn?: boolean }) {
+export function MarketingNav({
+  signedIn = false,
+  hasProfile = false,
+}: {
+  signedIn?: boolean;
+  hasProfile?: boolean;
+}) {
   const pathname = usePathname() ?? "/";
-  const logoHref = signedIn ? "/archive" : "/";
+  // Logo destination mirrors the routing state machine:
+  //   - authed + profile → dashboard
+  //   - everyone else (unauthed, or mid-onboarding with no dashboard yet) → /
+  const logoHref = signedIn && hasProfile ? "/archive" : "/";
+  // Entry CTA also follows the state machine so the user isn't bounced
+  // through /signin when they're already signed in.
+  const ctaHref = !signedIn
+    ? "/signin"
+    : hasProfile
+    ? "/archive"
+    : "/welcome";
+  const ctaLabel = !signedIn
+    ? "Get Early Access"
+    : hasProfile
+    ? "Open archive"
+    : "Finish setup";
 
   return (
     <nav
@@ -68,7 +89,7 @@ export function MarketingNav({ signedIn = false }: { signedIn?: boolean }) {
           );
         })}
         <Link
-          href="/signin"
+          href={ctaHref}
           className="rounded-[10px] px-6 py-[10px] text-[14px] font-semibold text-white no-underline transition hover:-translate-y-px"
           style={{
             background:
@@ -76,7 +97,7 @@ export function MarketingNav({ signedIn = false }: { signedIn?: boolean }) {
             boxShadow: "0 2px 10px rgba(13,148,136,0.25)",
           }}
         >
-          Get Early Access
+          {ctaLabel}
         </Link>
       </div>
     </nav>
