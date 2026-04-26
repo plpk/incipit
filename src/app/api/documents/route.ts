@@ -162,7 +162,7 @@ export async function POST(req: Request) {
       .maybeSingle();
     if (profileErr) throw profileErr;
     const currentCount = userProfile?.document_count ?? 0;
-    const limit = userProfile?.document_limit ?? 5;
+    const limit = userProfile?.document_limit ?? 10;
     if (currentCount >= limit) {
       return NextResponse.json(
         {

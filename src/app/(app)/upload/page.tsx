@@ -22,7 +22,7 @@ export default async function UploadPage() {
   ]);
 
   const count = profileRow.data?.document_count ?? 0;
-  const limit = profileRow.data?.document_limit ?? 5;
+  const limit = profileRow.data?.document_limit ?? 10;
   const atLimit = count >= limit;
 
   return (
