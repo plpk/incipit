@@ -101,13 +101,13 @@ export default function EarlyAccessPage() {
           }}
         />
 
-        {/* 5-DOCUMENT LIMIT */}
+        {/* 10-DOCUMENT LIMIT */}
         <section className="mb-16 animate-fade-up">
           <h2 className="mb-4 font-display text-[24px] font-bold leading-[1.25] tracking-tight">
-            The 5-document limit
+            The 10-document limit
           </h2>
           <p className="mb-4 text-[16px] leading-[1.8] text-ink-600">
-            During early access, each account can upload up to 5 documents.
+            During early access, each account can upload up to 10 documents.
             This is enough to experience the full workflow: upload, extract,
             verify, and see connections surface between your documents.
           </p>
@@ -124,7 +124,7 @@ export default function EarlyAccessPage() {
           </h2>
           <p className="mb-4 text-[16px] leading-[1.8] text-ink-600">
             Incipit is not a place to bulk-upload your entire research
-            archive right now. The 5-document limit means this is a chance
+            archive right now. The 10-document limit means this is a chance
             to try the workflow, see how the AI handles your specific
             documents, and give us feedback on what works and what
             doesn&apos;t.

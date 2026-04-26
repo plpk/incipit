@@ -42,7 +42,7 @@ create table if not exists profiles (
     avatar_url text,
     marketing_opt_in boolean not null default false,
     document_count integer not null default 0,
-    document_limit integer not null default 5,
+    document_limit integer not null default 10,
     onboarding_completed boolean not null default false,
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now()

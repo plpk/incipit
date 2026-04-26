@@ -111,7 +111,7 @@ export default async function SignInPage() {
             </div>
             <div className="text-[13px] leading-[1.55] text-ink-600">
               <strong className="font-semibold text-ink-900">
-                You can upload up to 5 documents during early access.
+                You can upload up to 10 documents during early access.
               </strong>{" "}
               When early access ends, your archive stays. Nothing gets
               reset.
