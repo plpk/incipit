@@ -8,13 +8,16 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Accepted upload MIME types — kept in sync with react-dropzone's accept
-// config and /api/extract's ACCEPTED map.
+// config and /api/extract's ACCEPTED map. HEIC/HEIF cover iPhone photos
+// (sharp transcodes them server-side before the Anthropic call).
 const ACCEPTED: Record<string, true> = {
   "image/png": true,
   "image/jpeg": true,
   "image/jpg": true,
   "image/webp": true,
   "image/gif": true,
+  "image/heic": true,
+  "image/heif": true,
   "application/pdf": true,
 };
 
@@ -103,6 +106,8 @@ function extensionFor(mimeType: string, filename: string): string {
     "image/jpeg": ".jpg",
     "image/webp": ".webp",
     "image/gif": ".gif",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
     "application/pdf": ".pdf",
   };
   return map[mimeType] ?? "";

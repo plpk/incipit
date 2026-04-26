@@ -27,6 +27,69 @@ function sanitizeFilename(name: string): string {
   return cleaned || "upload";
 }
 
+// Hard cap before we even try to upload. Anthropic + Vercel + Supabase
+// can technically take more, but 20MB is the practical ceiling for
+// scans we want to push through Opus vision. Catch this client-side so
+// the user gets immediate feedback instead of waiting for a failed
+// upload + extract round-trip.
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+// Browsers (especially Safari) sometimes report an empty MIME for HEIC
+// or unusual extensions. Fall back to the filename suffix so the
+// upload pipeline still has a recognised type.
+function inferFileType(file: File): string {
+  if (file.type) return file.type;
+  const ext = file.name.match(/\.([a-z0-9]{1,6})$/i)?.[1].toLowerCase();
+  switch (ext) {
+    case "heic":
+      return "image/heic";
+    case "heif":
+      return "image/heif";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "png":
+      return "image/png";
+    case "webp":
+      return "image/webp";
+    case "gif":
+      return "image/gif";
+    case "pdf":
+      return "application/pdf";
+    default:
+      return "";
+  }
+}
+
+// Map raw errors (server messages, network failures, parser errors)
+// to short, plain-language strings the user can act on. The raw error
+// is always preserved in console.log for debugging — this only changes
+// what's rendered.
+function friendlyErrorMessage(detail: string): string {
+  const d = detail.toLowerCase();
+  if (
+    d.includes("could not process image") ||
+    d.includes("image_not_processable") ||
+    d.includes("image_preprocess_failed") ||
+    d.includes("couldn't be processed")
+  ) {
+    return "This image couldn't be processed. Try converting it to PNG or JPEG, or reducing the file size.";
+  }
+  if (d.includes("document_limit_reached")) {
+    return detail; // server already returns a clear sentence
+  }
+  if (d.includes("file is too large") || d.includes("payload too large")) {
+    return "That file is too large. Please use a file under 20MB.";
+  }
+  if (d.includes("unsupported file type")) {
+    return "That file type isn't supported. Please upload a PDF, PNG, JPEG, WebP, GIF, or HEIC file.";
+  }
+  if (d.includes("unauthenticated") || d.includes("forbidden")) {
+    return "Your session expired. Please sign in again and retry.";
+  }
+  return "Something went wrong processing your document. Please try again.";
+}
+
 // Safe JSON reader: calling res.json() on a non-JSON body throws a
 // DOMException in WebKit (the exact "The string did not match the
 // expected pattern." error we've been chasing). This reads the body as
@@ -205,7 +268,6 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       if (!accepted.length) return;
       const picked = accepted[0];
       setError(null);
-      setStage("uploading");
       setFile(picked);
 
       console.group("[onDrop] starting upload");
@@ -214,10 +276,41 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       console.log("file.size:", picked.size);
       console.groupEnd();
 
+      // Client-side guard: stop oversized uploads before they waste a
+      // full upload + extract round-trip. The server still enforces its
+      // own limits, but failing fast here gives much better feedback.
+      if (picked.size > MAX_FILE_BYTES) {
+        const sizeMb = (picked.size / 1024 / 1024).toFixed(1);
+        console.warn(
+          `[onDrop] rejected oversize file (${sizeMb}MB > ${MAX_FILE_BYTES / 1024 / 1024}MB cap)`,
+        );
+        setError(
+          `That file is ${sizeMb}MB — please use a file under 20MB. For phone photos, try sharing as "Most Compatible" or resize before uploading.`,
+        );
+        setStage("error");
+        return;
+      }
+
+      const fileType = inferFileType(picked);
+      if (!fileType) {
+        console.warn("[onDrop] could not determine MIME type for", picked.name);
+        setError(
+          "That file type isn't supported. Please upload a PDF, PNG, JPEG, WebP, GIF, or HEIC file.",
+        );
+        setStage("error");
+        return;
+      }
+
+      setStage("uploading");
+
       let step: string = "init";
       try {
         step = "url.createObjectURL";
-        if (picked.type.startsWith("image/")) {
+        // HEIC previews aren't decodable by most browsers — skip the
+        // preview rather than show a broken image. The server-side
+        // sharp transcoding still produces a usable thumbnail later.
+        const isHeic = fileType === "image/heic" || fileType === "image/heif";
+        if (fileType.startsWith("image/") && !isHeic) {
           setPreview(URL.createObjectURL(picked));
         } else {
           setPreview(null);
@@ -236,7 +329,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             filename: safeName,
-            file_type: picked.type,
+            file_type: fileType,
           }),
         });
         step = "upload-url.json()";
@@ -260,7 +353,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         const { error: upErr } = await supabase.storage
           .from(STORAGE_BUCKET)
           .uploadToSignedUrl(urlData.path as string, urlData.token as string, picked, {
-            contentType: picked.type,
+            contentType: fileType,
             upsert: false,
           });
         if (upErr) throw new Error(`Upload to storage failed: ${upErr.message}`);
@@ -276,7 +369,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             file_path: urlData.path as string,
-            file_type: picked.type,
+            file_type: fileType,
             original_filename: picked.name,
           }),
         });
@@ -345,8 +438,8 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         step = "review-ready";
         setStage("review");
       } catch (e) {
-        // Same detailed capture as handleSave — the banner text will say
-        // which step and which DOMException constructor threw.
+        // Detailed capture stays in the console for debugging; the
+        // user only sees a clean, actionable message in the UI.
         console.group("[onDrop] caught error");
         console.error("step:", step);
         console.error("error:", e);
@@ -364,10 +457,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
         }
         console.groupEnd();
         const detail = e instanceof Error ? e.message : String(e);
-        const kind =
-          (e as { constructor?: { name?: string } })?.constructor?.name ??
-          "Error";
-        setError(`[${kind} @ ${step}] ${detail}`);
+        setError(friendlyErrorMessage(detail));
         setStage("error");
       }
     },
@@ -382,6 +472,8 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       "image/jpeg": [],
       "image/webp": [],
       "image/gif": [],
+      "image/heic": [".heic"],
+      "image/heif": [".heif"],
       "application/pdf": [],
     },
   });
@@ -561,8 +653,8 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       // the incremented document_count without requiring a page refresh.
       router.refresh();
     } catch (e) {
-      // Detailed error logging — the cryptic "string did not match the
-      // expected pattern" bug was hard to source. Surface every angle.
+      // Detailed logging stays in the console for debugging; the user
+      // sees a friendly, generic message.
       console.group("[handleSave] caught error");
       console.error("error:", e);
       console.error(
@@ -579,10 +671,7 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
       }
       console.groupEnd();
       const detail = e instanceof Error ? e.message : String(e);
-      const kind =
-        (e as { constructor?: { name?: string } })?.constructor?.name ??
-        "Error";
-      setError(`[${kind}] ${detail}`);
+      setError(friendlyErrorMessage(detail));
       setStage("error");
     }
   }
@@ -623,10 +712,10 @@ export function UploadWorkflow({ profileId }: { profileId: string | null }) {
           {isDragActive ? "Drop the file here…" : "Drop a scan or click to pick a file"}
         </p>
         <p className="text-[14px] text-ink-500">
-          PDF or image. We&apos;ll read the picture directly — OCR text layers are ignored.
+          PDF or image (PNG, JPEG, HEIC, WebP, GIF). We&apos;ll read the picture directly — OCR text layers are ignored.
         </p>
         <p className="mt-2 text-[12px] text-ink-400">
-          You&apos;ll review everything Incipit finds — including any archive markings — before anything is saved.
+          Up to 20MB. You&apos;ll review everything Incipit finds — including any archive markings — before anything is saved.
         </p>
       </div>
     );
